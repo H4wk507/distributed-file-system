@@ -22,28 +22,28 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 ### PODSTAWOWA ARCHITEKTURA SYSTEMU
 
-1. Węzeł (Node) - podstawowa struktura
+1. [X] Węzeł (Node) - podstawowa struktura
 
-- Zaimplementować klasę Node z polami: id, ip, port, role, status
-- Zaimplementować metodę heartbeat - wysyłanie sygnału co 5s
-- Zaimplementować metodę send_message do komunikacji TCP/UDP
-- Zaimplementować metodę receive_message nasłuchującą wiadomości
-- Dodać strukturę do trzymania informacji o innych węzłach w klastrze
+- [X] Zaimplementować klasę Node z polami: id, ip, port, role, status
+- [X] Zaimplementować metodę heartbeat - wysyłanie sygnału co 5s
+- [X] Zaimplementować metodę send_message do komunikacji TCP/UDP
+- [X] Zaimplementować metodę receive_message nasłuchującą wiadomości
+- [X] Dodać strukturę do trzymania informacji o innych węzłach w klastrze
 
 2. Protokół komunikacji między węzłami
 
-- Zdefiniować format wiadomości (typ, nadawca, odbiorca, payload)
-- Zdefiniować typy wiadomości: HEARTBEAT, ELECTION, DATA_REQUEST, LOCK_REQUEST, etc.
-- Zaimplementować serializację/deserializację wiadomości
-- Zaimplementować retry mechanism przy timeout
-- Dodać logowanie wszystkich wiadomości sieciowych
+- [X] Zdefiniować format wiadomości (typ, nadawca, odbiorca, payload)
+- [X] Zdefiniować typy wiadomości: HEARTBEAT, ELECTION, DATA_REQUEST, LOCK_REQUEST, etc.
+- [X] Zaimplementować serializację/deserializację wiadomości
+- [X] Zaimplementować retry mechanism przy timeout
+- [X] Dodać logowanie wszystkich wiadomości sieciowych
 
 3. Discovery - wykrywanie węzłów
 
-- Zaimplementować bootstrap mechanism - nowy węzeł dostaje listę od seed node
-- Zaimplementować broadcast przy dołączeniu nowego węzła
-- Zaimplementować usuwanie offline węzłów z listy aktywnych
-- Każdy węzeł utrzymuje aktualną listę wszystkich węzłów
+- [X] Zaimplementować bootstrap mechanism - nowy węzeł dostaje listę od seed node
+- [X] Zaimplementować broadcast przy dołączeniu nowego węzła
+- [X] Zaimplementować usuwanie offline węzłów z listy aktywnych
+- [X] Każdy węzeł utrzymuje aktualną listę wszystkich węzłów
 
 ### ALGORYTM ELEKCJI LIDERA
 

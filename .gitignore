@@ -24,3 +24,10 @@ dist-ssr
 *.sw?
 
 main
+
+backend/bin/
+go.work
+
+*.aux
+*.toc
+*.log
