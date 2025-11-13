@@ -2,32 +2,28 @@ package election
 
 import (
 	"context"
+	"dfs-backend/dfs/common"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-type ElectionStatus string
-
-const (
-	StatusIdle       ElectionStatus = "idle"
-	StatusInProgress ElectionStatus = "in_progress"
-	StatusCompleted  ElectionStatus = "completed"
-)
-
 type Elector interface {
+	Start(ctx context.Context) error
+	Stop() error
 	StartElection(ctx context.Context) error
-	HandleElectionMessage(msg ElectionMessage) error
-	GetCurrentLeader() (uuid.UUID, error)
-	IsLeader() bool
+	HandleMessage(ctx context.Context, msg common.Message) error
+	NotifyCoordinatorDead(coordinatorID uuid.UUID)
 }
 
 type ElectionMessage struct {
-	Type      MessageType `json:"type"`
-	From      uuid.UUID   `json:"from"`
-	To        uuid.UUID   `json:"to"`
-	Priority  int         `json:"priority"`
-	Timestamp time.Time   `json:"timestamp"`
+	Type      MessageType     `json:"type"`
+	From      uuid.UUID       `json:"from"`
+	To        uuid.UUID       `json:"to"`
+	Priority  int             `json:"priority"`
+	Timestamp time.Time       `json:"timestamp"`
+	Payload   json.RawMessage `json:"payload,omitempty"`
 }
 
 type MessageType string

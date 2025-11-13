@@ -2,6 +2,8 @@ package node
 
 import (
 	"context"
+	. "dfs-backend/dfs/common"
+	"dfs-backend/dfs/election"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -12,55 +14,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type NodeRole string
-
-const (
-	RoleMaster  NodeRole = "master"
-	RoleStorage NodeRole = "storage"
-)
-
-type NodeStatus string
-
-const (
-	StatusOnline   NodeStatus = "online"
-	StatusOffline  NodeStatus = "offline"
-	StatusStarting NodeStatus = "starting"
-	StatusStopping NodeStatus = "stopping"
-)
-
-type MessageType string
-
-const (
-	MessageHeartbeat   MessageType = "heartbeat"
-	MessageElection    MessageType = "election"
-	MessageDataRequest MessageType = "data_request"
-	MessageLockRequest MessageType = "lock_request"
-	MessageLockRelease MessageType = "lock_release"
-	MessageLockAck     MessageType = "lock_ack"
-	MessageDiscovery   MessageType = "discovery"
-	MessageNodeJoined  MessageType = "node_joined"
-	MessageNodeLeft    MessageType = "node_left"
-	MessageCoordinator MessageType = "coordinator"
-)
-
-type Message struct {
-	Type      MessageType     `json:"type"`
-	From      uuid.UUID       `json:"from"`
-	To        uuid.UUID       `json:"to"`
-	Timestamp time.Time       `json:"timestamp"`
-	Payload   json.RawMessage `json:"payload,omitempty"`
-}
-
-type NodeInfo struct {
-	ID            uuid.UUID  `json:"id"`
-	IP            string     `json:"ip"`
-	Port          int        `json:"port"`
-	Role          NodeRole   `json:"role"`
-	Status        NodeStatus `json:"status"`
-	Priority      int        `json:"priority"`
-	LastHeartbeat time.Time  `json:"last_heartbeat"`
-}
-
 type Node struct {
 	ID       uuid.UUID
 	IP       string
@@ -68,6 +21,8 @@ type Node struct {
 	Role     NodeRole
 	Status   NodeStatus
 	Priority int
+
+	elector election.Elector
 
 	Peers     map[uuid.UUID]*NodeInfo
 	peerMutex sync.RWMutex
@@ -80,8 +35,8 @@ type Node struct {
 	logger *log.Logger
 }
 
-func NewNode(ip string, port int, role NodeRole, priority int) *Node {
-	return &Node{
+func CreateNodeWithBully(ip string, port int, role NodeRole, priority int) *Node {
+	n := &Node{
 		ID:          uuid.New(),
 		IP:          ip,
 		Port:        port,
@@ -93,6 +48,10 @@ func NewNode(ip string, port int, role NodeRole, priority int) *Node {
 		stopChan:    make(chan struct{}),
 		logger:      log.New(log.Writer(), fmt.Sprintf("[Node %s] ", role), log.LstdFlags),
 	}
+
+	n.elector = election.NewBullyElector(n)
+
+	return n
 }
 
 func (n *Node) Start(ctx context.Context) error {
@@ -109,6 +68,9 @@ func (n *Node) Start(ctx context.Context) error {
 	go n.handleMessages(ctx)
 	go n.startHeartbeat(ctx)
 	go n.monitorPeers(ctx)
+	if err := n.elector.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start elector: %w", err)
+	}
 
 	return nil
 }
@@ -181,13 +143,18 @@ func (n *Node) handleMessages(ctx context.Context) {
 		case <-n.stopChan:
 			return
 		case msg := <-n.messageChan:
-			n.processMessage(msg)
+			n.processMessage(ctx, msg)
 		}
 	}
 }
 
-func (n *Node) processMessage(msg Message) {
+func (n *Node) processMessage(ctx context.Context, msg Message) {
 	switch msg.Type {
+	case MessageElection, MessageOK, MessageCoordinator:
+		if err := n.elector.HandleMessage(ctx, msg); err != nil {
+			n.logger.Printf("Failed to handle election message: %v", err)
+		}
+		return
 	case MessageHeartbeat:
 		n.handleHeartbeat(msg)
 	case MessageDiscovery:
@@ -336,13 +303,17 @@ func (n *Node) checkPeersHealth() {
 	now := time.Now()
 	for id, peer := range n.Peers {
 		if now.Sub(peer.LastHeartbeat) > 15*time.Second {
-			delete(n.Peers, id)
 			n.logger.Printf("Peer timeout: %s (%s:%d)", id, peer.IP, peer.Port)
+			if peer.Role == RoleMaster {
+				n.logger.Printf("Coordinator %s is unresponsive, notifying elector", id)
+				n.elector.NotifyCoordinatorDead(id)
+			}
+			delete(n.Peers, id)
 		}
 	}
 }
 
-func (n *Node) SendMessage(ip string, port int, msg Message) error {
+func (n *Node) SendMessage(ip string, port int, data interface{}) error {
 	addr := fmt.Sprintf("%s:%d", ip, port)
 
 	maxRetries := 3
@@ -356,15 +327,15 @@ func (n *Node) SendMessage(ip string, port int, msg Message) error {
 			time.Sleep(time.Duration(i+1) * 500 * time.Millisecond) // Exponential backoff
 			continue
 		}
-		defer conn.Close()
 
 		conn.SetWriteDeadline(time.Now().Add(timeout))
 
 		encoder := json.NewEncoder(conn)
-		if err := encoder.Encode(msg); err != nil {
+		if err := encoder.Encode(data); err != nil {
 			lastErr = err
 			continue
 		}
+		conn.Close()
 
 		return nil
 	}
@@ -372,7 +343,7 @@ func (n *Node) SendMessage(ip string, port int, msg Message) error {
 	return fmt.Errorf("failed to send message to %s after %d retries: %w", addr, maxRetries, lastErr)
 }
 
-func (n *Node) BroadcastMessage(msg Message) {
+func (n *Node) BroadcastMessage(data interface{}) error {
 	n.peerMutex.RLock()
 	peers := make([]*NodeInfo, 0, len(n.Peers))
 	for _, peer := range n.Peers {
@@ -382,11 +353,12 @@ func (n *Node) BroadcastMessage(msg Message) {
 
 	for _, peer := range peers {
 		go func(p *NodeInfo) {
-			if err := n.SendMessage(p.IP, p.Port, msg); err != nil {
+			if err := n.SendMessage(p.IP, p.Port, data); err != nil {
 				n.logger.Printf("Failed to send message to %s: %v", p.ID, err)
 			}
 		}(peer)
 	}
+	return nil
 }
 
 func (n *Node) DiscoverPeers(seedIP string, seedPort int) error {
@@ -454,13 +426,6 @@ func (n *Node) AddPeer(peer *NodeInfo) {
 	n.Peers[peer.ID] = peer
 }
 
-func (n *Node) RemovePeer(peerID uuid.UUID) {
-	n.peerMutex.Lock()
-	defer n.peerMutex.Unlock()
-
-	delete(n.Peers, peerID)
-}
-
 func (n *Node) GetPeer(peerID uuid.UUID) (*NodeInfo, bool) {
 	n.peerMutex.RLock()
 	defer n.peerMutex.RUnlock()
@@ -490,6 +455,48 @@ func (n *Node) GetNodeInfo() *NodeInfo {
 		Priority:      n.Priority,
 		LastHeartbeat: time.Now(),
 	}
+}
+
+func (n *Node) GetID() uuid.UUID {
+	return n.ID
+}
+
+func (n *Node) GetPriority() int {
+	return n.Priority
+}
+
+func (n *Node) GetRole() NodeRole {
+	return n.Role
+}
+
+func (n *Node) SetRole(role NodeRole) {
+	n.Role = role
+}
+
+func (n *Node) GetPeers() []NodeInfo {
+	n.peerMutex.RLock()
+	defer n.peerMutex.RUnlock()
+
+	peers := make([]NodeInfo, 0, len(n.Peers))
+	for _, peer := range n.Peers {
+		peers = append(peers, *peer)
+	}
+	return peers
+}
+
+func (n *Node) UpdatePeerRole(peerID uuid.UUID, role NodeRole) {
+	n.peerMutex.Lock()
+	defer n.peerMutex.Unlock()
+
+	if peer, exists := n.Peers[peerID]; exists {
+		peer.Role = role
+	}
+}
+
+func (n *Node) RemovePeer(peerID uuid.UUID) {
+	n.peerMutex.Lock()
+	defer n.peerMutex.Unlock()
+	delete(n.Peers, peerID)
 }
 
 func (n *Node) GetMessageChan() <-chan Message {
