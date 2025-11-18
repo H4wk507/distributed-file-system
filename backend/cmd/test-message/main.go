@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"dfs-backend/dfs/common"
 	"dfs-backend/dfs/node"
 )
 
@@ -13,8 +14,8 @@ func main() {
 	log.Println()
 
 	log.Println("Creating nodes...")
-	node1 := node.NewNode("127.0.0.1", 9000, node.RoleMaster, 10)
-	node2 := node.NewNode("127.0.0.1", 9001, node.RoleStorage, 5)
+	node1 := node.CreateNodeWithBully("127.0.0.1", 9000, common.RoleMaster, 10)
+	node2 := node.CreateNodeWithBully("127.0.0.1", 9001, common.RoleStorage, 5)
 	log.Printf("Node1 ID: %s", node1.ID)
 	log.Printf("Node2 ID: %s", node2.ID)
 	log.Println()

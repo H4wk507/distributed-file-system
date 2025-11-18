@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"dfs-backend/dfs/common"
 	"dfs-backend/dfs/node"
 )
 
@@ -21,17 +22,17 @@ func main() {
 	seedPort := flag.Int("seed-port", 9000, "Seed node port for discovery")
 	flag.Parse()
 
-	var nodeRole node.NodeRole
+	var nodeRole common.NodeRole
 	switch *role {
 	case "master":
-		nodeRole = node.RoleMaster
+		nodeRole = common.RoleMaster
 	case "storage":
-		nodeRole = node.RoleStorage
+		nodeRole = common.RoleStorage
 	default:
 		log.Fatalf("Invalid role: %s (must be 'master' or 'storage')", *role)
 	}
 
-	n := node.NewNode(*ip, *port, nodeRole, *priority)
+	n := node.CreateNodeWithBully(*ip, *port, nodeRole, *priority)
 	log.Printf("Created node: ID=%s, Role=%s, Priority=%d", n.ID, nodeRole, *priority)
 
 	ctx, cancel := context.WithCancel(context.Background())

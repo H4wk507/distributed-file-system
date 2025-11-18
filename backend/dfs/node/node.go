@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"dfs-backend/dfs/common"
 	. "dfs-backend/dfs/common"
 	"dfs-backend/dfs/election"
 	"encoding/json"
@@ -29,8 +30,11 @@ type Node struct {
 
 	listener net.Listener
 
-	messageChan chan Message
+	messageChan chan common.Message
 	stopChan    chan struct{}
+
+	logicalTime      int
+	logicalTimeMutex sync.Mutex
 
 	logger *log.Logger
 }
@@ -44,8 +48,9 @@ func CreateNodeWithBully(ip string, port int, role NodeRole, priority int) *Node
 		Status:      StatusStarting,
 		Priority:    priority,
 		Peers:       make(map[uuid.UUID]*NodeInfo),
-		messageChan: make(chan Message, 100),
+		messageChan: make(chan common.Message, 100),
 		stopChan:    make(chan struct{}),
+		logicalTime: 0,
 		logger:      log.New(log.Writer(), fmt.Sprintf("[Node %s] ", role), log.LstdFlags),
 	}
 
@@ -117,19 +122,21 @@ func (n *Node) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	decoder := json.NewDecoder(conn)
-	var msg Message
-	if err := decoder.Decode(&msg); err != nil {
+	var msgWithTime MessageWithTime
+	if err := decoder.Decode(&msgWithTime); err != nil {
 		n.logger.Printf("Failed to decode message: %v", err)
 		return
 	}
 
-	if msg.Type == MessageDiscovery {
-		n.handleDiscoveryWithConnection(msg, conn)
+	n.UpdateAndGetLogicalTime(msgWithTime.LogicalTime)
+
+	if msgWithTime.Message.Type == MessageDiscovery {
+		n.handleDiscoveryWithConnection(msgWithTime.Message, conn)
 		return
 	}
 
 	select {
-	case n.messageChan <- msg:
+	case n.messageChan <- msgWithTime.Message:
 	default:
 		n.logger.Println("Message channel full, dropping message")
 	}
@@ -148,7 +155,9 @@ func (n *Node) handleMessages(ctx context.Context) {
 	}
 }
 
-func (n *Node) processMessage(ctx context.Context, msg Message) {
+func (n *Node) processMessage(ctx context.Context, msg common.Message) {
+	n.logger.Printf("Processing message of type %s from %s", msg.Type, msg.From)
+
 	switch msg.Type {
 	case MessageElection, MessageOK, MessageCoordinator:
 		if err := n.elector.HandleMessage(ctx, msg); err != nil {
@@ -164,7 +173,7 @@ func (n *Node) processMessage(ctx context.Context, msg Message) {
 	case MessageNodeLeft:
 		n.handleNodeLeft(msg)
 	default:
-		n.logger.Printf("Received message of type %s from %s", msg.Type, msg.From)
+		n.logger.Printf("Received msg of type %s from %s", msg.Type, msg.From)
 	}
 }
 
@@ -192,7 +201,7 @@ func (n *Node) handleDiscovery(msg Message) {
 	n.logger.Printf("Discovery message received in regular handler from %s", msg.From)
 }
 
-func (n *Node) handleDiscoveryWithConnection(msg Message, conn net.Conn) {
+func (n *Node) handleDiscoveryWithConnection(msg common.Message, conn net.Conn) {
 	n.peerMutex.RLock()
 	peers := make([]*NodeInfo, 0, len(n.Peers))
 	for _, peer := range n.Peers {
@@ -204,12 +213,16 @@ func (n *Node) handleDiscoveryWithConnection(msg Message, conn net.Conn) {
 	peers = append(peers, myInfo)
 
 	payload, _ := json.Marshal(peers)
-	response := Message{
-		Type:      MessageDiscovery,
-		From:      n.ID,
-		To:        msg.From,
-		Timestamp: time.Now(),
-		Payload:   payload,
+
+	newTime := n.IncrementAndGetLogicalTime()
+	response := MessageWithTime{
+		Message: Message{
+			Type:    MessageDiscovery,
+			From:    n.ID,
+			To:      msg.From,
+			Payload: payload,
+		},
+		LogicalTime: newTime,
 	}
 
 	encoder := json.NewEncoder(conn)
@@ -262,10 +275,9 @@ func (n *Node) sendHeartbeat() {
 	}
 
 	msg := Message{
-		Type:      MessageHeartbeat,
-		From:      n.ID,
-		Timestamp: time.Now(),
-		Payload:   payload,
+		Type:    MessageHeartbeat,
+		From:    n.ID,
+		Payload: payload,
 	}
 
 	n.peerMutex.RLock()
@@ -313,7 +325,7 @@ func (n *Node) checkPeersHealth() {
 	}
 }
 
-func (n *Node) SendMessage(ip string, port int, data interface{}) error {
+func (n *Node) SendMessage(ip string, port int, msg common.Message) error {
 	addr := fmt.Sprintf("%s:%d", ip, port)
 
 	maxRetries := 3
@@ -327,15 +339,23 @@ func (n *Node) SendMessage(ip string, port int, data interface{}) error {
 			time.Sleep(time.Duration(i+1) * 500 * time.Millisecond) // Exponential backoff
 			continue
 		}
+		defer conn.Close()
+
+		newTime := n.IncrementAndGetLogicalTime()
+		n.logger.Printf("Sending message of type %s to %s with logical time %d", msg.Type, addr, newTime)
+
+		msgWithTime := MessageWithTime{
+			Message:     msg,
+			LogicalTime: newTime,
+		}
 
 		conn.SetWriteDeadline(time.Now().Add(timeout))
 
 		encoder := json.NewEncoder(conn)
-		if err := encoder.Encode(data); err != nil {
+		if err := encoder.Encode(msgWithTime); err != nil {
 			lastErr = err
 			continue
 		}
-		conn.Close()
 
 		return nil
 	}
@@ -343,7 +363,7 @@ func (n *Node) SendMessage(ip string, port int, data interface{}) error {
 	return fmt.Errorf("failed to send message to %s after %d retries: %w", addr, maxRetries, lastErr)
 }
 
-func (n *Node) BroadcastMessage(data interface{}) error {
+func (n *Node) BroadcastMessage(msg common.Message) error {
 	n.peerMutex.RLock()
 	peers := make([]*NodeInfo, 0, len(n.Peers))
 	for _, peer := range n.Peers {
@@ -353,7 +373,7 @@ func (n *Node) BroadcastMessage(data interface{}) error {
 
 	for _, peer := range peers {
 		go func(p *NodeInfo) {
-			if err := n.SendMessage(p.IP, p.Port, data); err != nil {
+			if err := n.SendMessage(p.IP, p.Port, msg); err != nil {
 				n.logger.Printf("Failed to send message to %s: %v", p.ID, err)
 			}
 		}(peer)
@@ -362,11 +382,6 @@ func (n *Node) BroadcastMessage(data interface{}) error {
 }
 
 func (n *Node) DiscoverPeers(seedIP string, seedPort int) error {
-	msg := Message{
-		Type:      MessageDiscovery,
-		From:      n.ID,
-		Timestamp: time.Now(),
-	}
 
 	addr := fmt.Sprintf("%s:%d", seedIP, seedPort)
 	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
@@ -375,19 +390,30 @@ func (n *Node) DiscoverPeers(seedIP string, seedPort int) error {
 	}
 	defer conn.Close()
 
+	newTime := n.IncrementAndGetLogicalTime()
+	msg := MessageWithTime{
+		Message: Message{
+			Type: MessageDiscovery,
+			From: n.ID,
+		},
+		LogicalTime: newTime,
+	}
+
 	encoder := json.NewEncoder(conn)
 	if err := encoder.Encode(msg); err != nil {
 		return fmt.Errorf("failed to send discovery request: %w", err)
 	}
 
 	decoder := json.NewDecoder(conn)
-	var response Message
+	var response MessageWithTime
 	if err := decoder.Decode(&response); err != nil {
 		return fmt.Errorf("failed to receive discovery response: %w", err)
 	}
 
+	n.UpdateAndGetLogicalTime(response.LogicalTime)
+
 	var peers []*NodeInfo
-	if err := json.Unmarshal(response.Payload, &peers); err != nil {
+	if err := json.Unmarshal(response.Message.Payload, &peers); err != nil {
 		return fmt.Errorf("failed to unmarshal peer list: %w", err)
 	}
 
@@ -409,10 +435,9 @@ func (n *Node) announceJoin() {
 	payload, _ := json.Marshal(nodeInfo)
 
 	msg := Message{
-		Type:      MessageNodeJoined,
-		From:      n.ID,
-		Timestamp: time.Now(),
-		Payload:   payload,
+		Type:    MessageNodeJoined,
+		From:    n.ID,
+		Payload: payload,
 	}
 
 	n.BroadcastMessage(msg)
@@ -501,4 +526,18 @@ func (n *Node) RemovePeer(peerID uuid.UUID) {
 
 func (n *Node) GetMessageChan() <-chan Message {
 	return n.messageChan
+}
+
+func (n *Node) IncrementAndGetLogicalTime() int {
+	n.logicalTimeMutex.Lock()
+	defer n.logicalTimeMutex.Unlock()
+	n.logicalTime++
+	return n.logicalTime
+}
+
+func (n *Node) UpdateAndGetLogicalTime(receivedTime int) int {
+	n.logicalTimeMutex.Lock()
+	defer n.logicalTimeMutex.Unlock()
+	n.logicalTime = max(receivedTime, n.logicalTime) + 1
+	return n.logicalTime
 }

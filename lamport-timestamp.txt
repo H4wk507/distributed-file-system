@@ -1,0 +1,18 @@
+system rozproszony, gdzie wszystkie węzły mają perfekcyjnie zsynchronizowane zegary,
+nadal może przetworzyć zapytania w niepoprawnej kolejności. Opóźnienia sieciowe itp.
+
+Aby temu zapobiec, zamiast czasu fizycznego, który mierzy sekundy, wprowadza się
+czas logiczny, który mierzy ile zdarzeń wystąpiło w systemie. Ma za zadanie wyłapać
+zależność przyczynowo-skutkową między zdarzeniami.
+(e1 -> e2) => (T(e1) < T(e2))
+
+Lamport clock:
+
+każdy node ma swój czas t = 0
+gdy zdarzenie wystąpi lokalnie na danym nodzie, t := t + 1 na tym node
+gdy wysyłamy wiadomość, t := t + 1, oraz dołączamy t do wiadomości
+node otrzymujący wiadomość z czasem t', ustawia t = max(t', t) + 1
+
+gwarantuje (e1 -> e2) => (T(e1) < T(e2)), ale nie gwarantuje odwrotności
+(T(e1) < T(e2)) !=> (e1 -> e2) (mogą być współbieżne)
+

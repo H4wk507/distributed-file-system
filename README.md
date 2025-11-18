@@ -22,44 +22,44 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 ### PODSTAWOWA ARCHITEKTURA SYSTEMU
 
-1. [X] Węzeł (Node) - podstawowa struktura
+1. [x] Węzeł (Node) - podstawowa struktura
 
-- [X] Zaimplementować klasę Node z polami: id, ip, port, role, status
-- [X] Zaimplementować metodę heartbeat - wysyłanie sygnału co 5s
-- [X] Zaimplementować metodę send_message do komunikacji TCP/UDP
-- [X] Zaimplementować metodę receive_message nasłuchującą wiadomości
-- [X] Dodać strukturę do trzymania informacji o innych węzłach w klastrze
+- [x] Zaimplementować klasę Node z polami: id, ip, port, role, status
+- [x] Zaimplementować metodę heartbeat - wysyłanie sygnału co 5s
+- [x] Zaimplementować metodę send_message do komunikacji TCP/UDP
+- [x] Zaimplementować metodę receive_message nasłuchującą wiadomości
+- [x] Dodać strukturę do trzymania informacji o innych węzłach w klastrze
 
-2. Protokół komunikacji między węzłami
+2. [x] Protokół komunikacji między węzłami
 
-- [X] Zdefiniować format wiadomości (typ, nadawca, odbiorca, payload)
-- [X] Zdefiniować typy wiadomości: HEARTBEAT, ELECTION, DATA_REQUEST, LOCK_REQUEST, etc.
-- [X] Zaimplementować serializację/deserializację wiadomości
-- [X] Zaimplementować retry mechanism przy timeout
-- [X] Dodać logowanie wszystkich wiadomości sieciowych
+- [x] Zdefiniować format wiadomości (typ, nadawca, odbiorca, payload)
+- [x] Zdefiniować typy wiadomości: HEARTBEAT, ELECTION, DATA_REQUEST, LOCK_REQUEST, etc.
+- [x] Zaimplementować serializację/deserializację wiadomości
+- [x] Zaimplementować retry mechanism przy timeout
+- [x] Dodać logowanie wszystkich wiadomości sieciowych
 
-3. Discovery - wykrywanie węzłów
+3. [x] Discovery - wykrywanie węzłów
 
-- [X] Zaimplementować bootstrap mechanism - nowy węzeł dostaje listę od seed node
-- [X] Zaimplementować broadcast przy dołączeniu nowego węzła
-- [X] Zaimplementować usuwanie offline węzłów z listy aktywnych
-- [X] Każdy węzeł utrzymuje aktualną listę wszystkich węzłów
+- [x] Zaimplementować bootstrap mechanism - nowy węzeł dostaje listę od seed node
+- [x] Zaimplementować broadcast przy dołączeniu nowego węzła
+- [x] Zaimplementować usuwanie offline węzłów z listy aktywnych
+- [x] Każdy węzeł utrzymuje aktualną listę wszystkich węzłów
 
 ### ALGORYTM ELEKCJI LIDERA
 
-1. Bully Algorithm
+1. [x] Bully Algorithm
 
-- Zaimplementować Bully Algorithm - każdy węzeł ma priorytet (wyższy = silniejszy)
-- Zaimplementować wysyłanie ELECTION do węzłów o wyższym priorytecie
-- Zaimplementować timeout - jeśli nikt nie odpowie = ogłoś siebie masterem
-- Zaimplementować broadcast COORDINATOR gdy węzeł zostaje masterem
-- Zaimplementować aktualizację informacji o masterze u wszystkich węzłów
+- [x] Zaimplementować Bully Algorithm - każdy węzeł ma priorytet (wyższy = silniejszy)
+- [x] Zaimplementować wysyłanie ELECTION do węzłów o wyższym priorytecie
+- [x] Zaimplementować timeout - jeśli nikt nie odpowie = ogłoś siebie masterem
+- [x] Zaimplementować broadcast COORDINATOR gdy węzeł zostaje masterem
+- [x] Zaimplementować aktualizację informacji o masterze u wszystkich węzłów
 
-2. Wykrywanie awarii mastera
+2. [x] Wykrywanie awarii mastera
 
-- Zaimplementować detekcję braku heartbeat od mastera (timeout 15s)
-- Zaimplementować automatyczne rozpoczęcie elekcji po wykryciu awarii
-- Zaimplementować scenariusz powrotu starego mastera (nie przejmuje roli automatycznie)
+- [x] Zaimplementować detekcję braku heartbeat od mastera (timeout 15s)
+- [x] Zaimplementować automatyczne rozpoczęcie elekcji po wykryciu awarii
+- [x] Zaimplementować scenariusz powrotu starego mastera (nie przejmuje roli automatycznie)
 
 3. Synchronizacja po elekcji
 
@@ -71,9 +71,9 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 1. Lamport Timestamps
 
-- Zaimplementować Lamport clock - lokalny licznik dla każdego węzła
-- Zaimplementować increment clock przy każdym evencie
-- Zaimplementować aktualizację clock przy otrzymaniu wiadomości: max(local, received) + 1
+- [x] Zaimplementować Lamport clock - lokalny licznik dla każdego węzła
+- [x] Zaimplementować increment clock przy każdym evencie
+- [x] Zaimplementować aktualizację clock przy otrzymaniu wiadomości: max(local, received) + 1
 - Zaimplementować funkcję porównującą timestampy z tiebreaker po node ID
 
 2. Kolejka żądań blokad

@@ -21,8 +21,8 @@ type NodeCommunicator interface {
 	GetPeers() []common.NodeInfo
 	UpdatePeerRole(peerID uuid.UUID, role common.NodeRole)
 	RemovePeer(peerID uuid.UUID)
-	SendMessage(ip string, port int, data interface{}) error
-	BroadcastMessage(data interface{}) error
+	SendMessage(ip string, port int, data common.Message) error
+	BroadcastMessage(data common.Message) error
 }
 
 type BullyElector struct {
@@ -108,10 +108,9 @@ func (b *BullyElector) StartElection(ctx context.Context) error {
 		if peer.Priority > nodeInfo.Priority {
 			higherPriorityExists = true
 			electionMsg := common.Message{
-				Type:      common.MessageElection,
-				From:      nodeInfo.ID,
-				Timestamp: time.Now(),
-				Payload:   payload,
+				Type:    common.MessageElection,
+				From:    nodeInfo.ID,
+				Payload: payload,
 			}
 			go b.node.SendMessage(peer.IP, peer.Port, electionMsg)
 		}
@@ -143,9 +142,8 @@ func (b *BullyElector) StartElection(ctx context.Context) error {
 
 func (b *BullyElector) becomeLeader() {
 	msg := common.Message{
-		Type:      common.MessageCoordinator,
-		From:      b.node.GetID(),
-		Timestamp: time.Now(),
+		Type: common.MessageCoordinator,
+		From: b.node.GetID(),
 	}
 
 	b.node.BroadcastMessage(msg)
@@ -183,9 +181,8 @@ func (b *BullyElector) handleElection(ctx context.Context, msg common.Message) e
 
 	if b.node.GetPriority() > nodeInfo.Priority {
 		msgOk := common.Message{
-			Type:      common.MessageOK,
-			From:      b.node.GetID(),
-			Timestamp: time.Now(),
+			Type: common.MessageOK,
+			From: b.node.GetID(),
 		}
 		go b.node.SendMessage(nodeInfo.IP, nodeInfo.Port, msgOk)
 

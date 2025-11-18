@@ -46,9 +46,13 @@ const (
 )
 
 type Message struct {
-	Type      MessageType     `json:"type"`
-	From      uuid.UUID       `json:"from"`
-	To        uuid.UUID       `json:"to"`
-	Timestamp time.Time       `json:"timestamp"`
-	Payload   json.RawMessage `json:"payload,omitempty"`
+	Type    MessageType     `json:"type"`
+	From    uuid.UUID       `json:"from"`
+	To      uuid.UUID       `json:"to"`
+	Payload json.RawMessage `json:"payload,omitempty"`
+}
+
+type MessageWithTime struct {
+	Message     Message `json:"message"`
+	LogicalTime int     `json:"logical_time"`
 }
