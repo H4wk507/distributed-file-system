@@ -373,6 +373,7 @@ func (n *Node) BroadcastMessage(msg common.Message) error {
 
 	for _, peer := range peers {
 		go func(p *NodeInfo) {
+			// Każdy odbiorca dostanie inny logical time -- czy to zamierzone?
 			if err := n.SendMessage(p.IP, p.Port, msg); err != nil {
 				n.logger.Printf("Failed to send message to %s: %v", p.ID, err)
 			}
