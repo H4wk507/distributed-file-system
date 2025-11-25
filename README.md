@@ -74,15 +74,15 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 - [x] Zaimplementować Lamport clock - lokalny licznik dla każdego węzła
 - [x] Zaimplementować increment clock przy każdym evencie
 - [x] Zaimplementować aktualizację clock przy otrzymaniu wiadomości: max(local, received) + 1
-- Zaimplementować funkcję porównującą timestampy z tiebreaker po node ID
+- [x] Zaimplementować funkcję porównującą timestampy z tiebreaker po node ID
 
 2. Kolejka żądań blokad
 
-- Zaimplementować lokalną kolejkę lock_queue posortowaną po timestamp
-- Zaimplementować wysyłanie LOCK_REQUEST z timestamp do wszystkich węzłów
-- Zaimplementować dodawanie requestów do kolejki i wysyłanie ACK
-- Zaimplementować warunek wejścia do sekcji krytycznej (pierwszy w kolejce + ACK od wszystkich)
-- Zaimplementować LOCK_RELEASE i usuwanie z kolejki
+- [x] Zaimplementować lokalną kolejkę lock_queue posortowaną po timestamp
+- [x] Zaimplementować wysyłanie LOCK_REQUEST z timestamp do wszystkich węzłów
+- [x] Zaimplementować dodawanie requestów do kolejki i wysyłanie ACK
+- [x] Zaimplementować warunek wejścia do sekcji krytycznej (pierwszy w kolejce + ACK od wszystkich)
+- [x] Zaimplementować LOCK_RELEASE i usuwanie z kolejki
 
 3. Timeout dla blokad
 

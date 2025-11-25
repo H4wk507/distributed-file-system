@@ -43,6 +43,10 @@ const (
 	MessageNodeLeft    MessageType = "node_left"
 	MessageCoordinator MessageType = "coordinator"
 	MessageOK          MessageType = "ok"
+
+	MessageLockRequest MessageType = "lock_request"
+	MessageLockAck     MessageType = "lock_ack"
+	MessageLockRelease MessageType = "lock_release"
 )
 
 type Message struct {
@@ -55,4 +59,19 @@ type Message struct {
 type MessageWithTime struct {
 	Message     Message `json:"message"`
 	LogicalTime int     `json:"logical_time"`
+}
+
+type LockStatus string
+
+const (
+	StatusPending  LockStatus = "pending"
+	StatusGranted  LockStatus = "granted"
+	StatusReleased LockStatus = "released"
+)
+
+type LockRequest struct {
+	ResourceID  string     `json:"resource_id"`
+	NodeID      uuid.UUID  `json:"node_id"`
+	LogicalTime int        `json:"logical_time"`
+	Status      LockStatus `json:"lock_status"`
 }

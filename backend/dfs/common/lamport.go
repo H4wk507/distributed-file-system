@@ -34,3 +34,10 @@ func LessLamport(t1 int, id1 uuid.UUID, t2 int, id2 uuid.UUID) bool {
 func CompareMessageLamport(MessageWithTime1, MessageWithTime2 MessageWithTime) int {
 	return CompareLamport(MessageWithTime1.LogicalTime, MessageWithTime1.Message.From, MessageWithTime2.LogicalTime, MessageWithTime2.Message.From)
 }
+
+func CompareLockRequests(a, b *LockRequest) bool {
+	if a.LogicalTime != b.LogicalTime {
+		return a.LogicalTime < b.LogicalTime
+	}
+	return a.NodeID.String() < b.NodeID.String()
+}

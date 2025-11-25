@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sort"
 	"sync"
 	"time"
 
@@ -36,6 +37,10 @@ type Node struct {
 	logicalTime      int
 	logicalTimeMutex sync.Mutex
 
+	lockQueue      map[string][]*LockRequest // key = resourceID, value = request queue
+	pendingAcks    map[string]map[uuid.UUID]bool
+	lockQueueMutex sync.RWMutex
+
 	logger *log.Logger
 }
 
@@ -51,6 +56,8 @@ func CreateNodeWithBully(ip string, port int, role NodeRole, priority int) *Node
 		messageChan: make(chan common.Message, 100),
 		stopChan:    make(chan struct{}),
 		logicalTime: 0,
+		lockQueue:   make(map[string][]*LockRequest),
+		pendingAcks: make(map[string]map[uuid.UUID]bool),
 		logger:      log.New(log.Writer(), fmt.Sprintf("[Node %s] ", role), log.LstdFlags),
 	}
 
@@ -172,6 +179,12 @@ func (n *Node) processMessage(ctx context.Context, msg common.Message) {
 		n.handleNodeJoined(msg)
 	case MessageNodeLeft:
 		n.handleNodeLeft(msg)
+	case MessageLockRequest:
+		n.handleLockRequest(msg)
+	case MessageLockAck:
+		n.handleLockAck(msg)
+	case MessageLockRelease:
+		n.handleLockRelease(msg)
 	default:
 		n.logger.Printf("Received msg of type %s from %s", msg.Type, msg.From)
 	}
@@ -248,6 +261,76 @@ func (n *Node) handleNodeJoined(msg Message) {
 func (n *Node) handleNodeLeft(msg Message) {
 	n.RemovePeer(msg.From)
 	n.logger.Printf("Node left: %s", msg.From)
+}
+
+func (n *Node) handleLockRequest(msg Message) {
+	var lockRequest LockRequest
+	if err := json.Unmarshal(msg.Payload, &lockRequest); err != nil {
+		n.logger.Printf("Failed to unmarshal lock request payload: %v", err)
+		return
+	}
+
+	n.lockQueueMutex.Lock()
+	n.lockQueue[lockRequest.ResourceID] = append(n.lockQueue[lockRequest.ResourceID], &lockRequest)
+	queue := n.lockQueue[lockRequest.ResourceID]
+	sort.SliceStable(queue, func(i, j int) bool {
+		return common.CompareLockRequests(queue[i], queue[j])
+	})
+	n.lockQueueMutex.Unlock()
+
+	n.peerMutex.RLock()
+	p, exists := n.Peers[msg.From]
+	n.peerMutex.RUnlock()
+	if !exists {
+		n.logger.Printf("Unknown peer: %s", msg.From)
+		return
+	}
+
+	payload, _ := json.Marshal(lockRequest.ResourceID)
+	ackMsg := Message{
+		Type:    common.MessageLockAck,
+		From:    n.ID,
+		To:      p.ID,
+		Payload: payload,
+	}
+	go n.SendMessage(p.IP, p.Port, ackMsg)
+}
+
+func (n *Node) handleLockAck(msg Message) {
+	var resourceID string
+	if err := json.Unmarshal(msg.Payload, &resourceID); err != nil {
+		n.logger.Printf("Failed to unmarshal lock ack payload: %v", err)
+		return
+	}
+
+	n.lockQueueMutex.Lock()
+	defer n.lockQueueMutex.Unlock()
+	if _, exists := n.pendingAcks[resourceID]; !exists {
+		n.pendingAcks[resourceID] = make(map[uuid.UUID]bool)
+	}
+	n.pendingAcks[resourceID][msg.From] = true
+
+	n.logger.Printf("Received ack for %s from %s (total: %d/%d)", resourceID, msg.From, len(n.pendingAcks[resourceID]), len(n.Peers))
+}
+
+func (n *Node) handleLockRelease(msg Message) {
+	var resourceID string
+	if err := json.Unmarshal(msg.Payload, &resourceID); err != nil {
+		n.logger.Printf("Failed to unmarshal lock release payload: %v", err)
+		return
+	}
+
+	n.lockQueueMutex.Lock()
+	defer n.lockQueueMutex.Unlock()
+
+	for i, req := range n.lockQueue[resourceID] {
+		if req.NodeID == msg.From {
+			n.lockQueue[resourceID] = append(n.lockQueue[resourceID][:i], n.lockQueue[resourceID][i+1:]...)
+			n.logger.Printf("Lock on %s released by %s", resourceID, msg.From)
+			break
+		}
+	}
+
 }
 
 func (n *Node) startHeartbeat(ctx context.Context) {
@@ -541,4 +624,85 @@ func (n *Node) UpdateAndGetLogicalTime(receivedTime int) int {
 	defer n.logicalTimeMutex.Unlock()
 	n.logicalTime = max(receivedTime, n.logicalTime) + 1
 	return n.logicalTime
+}
+
+func (n *Node) RequestLock(resourceID string) {
+	newTime := n.IncrementAndGetLogicalTime()
+	lockRequest := LockRequest{
+		ResourceID:  resourceID,
+		NodeID:      n.ID,
+		LogicalTime: newTime,
+		Status:      common.StatusPending,
+	}
+
+	n.lockQueueMutex.Lock()
+	n.lockQueue[lockRequest.ResourceID] = append(n.lockQueue[lockRequest.ResourceID], &lockRequest)
+	queue := n.lockQueue[lockRequest.ResourceID]
+	sort.SliceStable(queue, func(i, j int) bool {
+		return common.CompareLockRequests(queue[i], queue[j])
+	})
+	n.pendingAcks[resourceID] = make(map[uuid.UUID]bool)
+	n.lockQueueMutex.Unlock()
+
+	payload, _ := json.Marshal(lockRequest)
+	msg := Message{
+		Type:    common.MessageLockRequest,
+		From:    n.ID,
+		Payload: payload,
+	}
+	n.BroadcastMessage(msg)
+	n.logger.Printf("Requested lock on %s with timestamp %d", resourceID, newTime)
+}
+
+func (n *Node) ReleaseLock(resourceID string) {
+	n.lockQueueMutex.Lock()
+	defer n.lockQueueMutex.Unlock()
+	for i, req := range n.lockQueue[resourceID] {
+		if req.NodeID == n.ID {
+			n.lockQueue[resourceID] = append(n.lockQueue[resourceID][:i], n.lockQueue[resourceID][i+1:]...)
+			break
+		}
+	}
+
+	payload, _ := json.Marshal(resourceID)
+	msg := Message{
+		Type:    common.MessageLockRelease,
+		From:    n.ID,
+		Payload: payload,
+	}
+	n.BroadcastMessage(msg)
+
+	delete(n.pendingAcks, resourceID)
+
+	n.logger.Printf("Released lock on %s", resourceID)
+}
+
+func (n *Node) CanEnterCriticalSection(resourceID string) bool {
+	n.lockQueueMutex.RLock()
+	defer n.lockQueueMutex.RUnlock()
+
+	if len(n.lockQueue[resourceID]) == 0 {
+		return false
+	}
+
+	if n.lockQueue[resourceID][0].NodeID != n.ID {
+		return false
+	}
+
+	n.peerMutex.RLock()
+	expectedAcks := len(n.Peers)
+	n.peerMutex.RUnlock()
+
+	if expectedAcks == 0 {
+		return true
+	}
+
+	receivedAcks := 0
+	for _, acked := range n.pendingAcks[resourceID] {
+		if acked {
+			receivedAcks++
+		}
+	}
+
+	return receivedAcks >= expectedAcks
 }
