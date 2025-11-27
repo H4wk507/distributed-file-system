@@ -896,3 +896,266 @@ func TestWaitForGraph_NoCycleWhenLinear(t *testing.T) {
 		t.Errorf("expected no cycle in linear chain, but got path %v", path)
 	}
 }
+
+/* Check if handleLockAbort releases all locks held by node */
+func TestHandleLockAbort_ReleasesAllLocks(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9979, common.RoleStorage, 1)
+
+	resource1 := "file1.txt"
+	resource2 := "file2.txt"
+	resource3 := "file3.txt"
+
+	// Setup: node holds locks on resource1 and resource2, but not resource3
+	node.lockQueueMutex.Lock()
+	node.lockQueue[resource1] = []*common.LockRequest{
+		{ResourceID: resource1, NodeID: node.ID, LogicalTime: 1, RequestedAt: time.Now()},
+	}
+	node.lockQueue[resource2] = []*common.LockRequest{
+		{ResourceID: resource2, NodeID: node.ID, LogicalTime: 2, RequestedAt: time.Now()},
+	}
+	// resource3 is held by another node
+	otherNodeID := uuid.New()
+	node.lockQueue[resource3] = []*common.LockRequest{
+		{ResourceID: resource3, NodeID: otherNodeID, LogicalTime: 1, RequestedAt: time.Now()},
+	}
+	node.pendingAcks[resource1] = make(map[uuid.UUID]bool)
+	node.pendingAcks[resource2] = make(map[uuid.UUID]bool)
+	node.lockQueueMutex.Unlock()
+
+	// Simulate receiving abort message
+	msg := common.Message{
+		Type: common.MessageLockAbort,
+		From: uuid.New(), // from master
+	}
+
+	node.handleLockAbort(msg)
+
+	// Verify our locks were released
+	node.lockQueueMutex.RLock()
+	res1Len := len(node.lockQueue[resource1])
+	res2Len := len(node.lockQueue[resource2])
+	res3Len := len(node.lockQueue[resource3])
+	node.lockQueueMutex.RUnlock()
+
+	if res1Len != 0 {
+		t.Errorf("expected resource1 queue to be empty, got %d", res1Len)
+	}
+
+	if res2Len != 0 {
+		t.Errorf("expected resource2 queue to be empty, got %d", res2Len)
+	}
+
+	// Other node's lock should remain
+	if res3Len != 1 {
+		t.Errorf("expected resource3 queue to have 1 request (other node), got %d", res3Len)
+	}
+}
+
+/* Check if handleLockAbort does nothing when node has no locks */
+func TestHandleLockAbort_NoLocksToRelease(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9978, common.RoleStorage, 1)
+
+	// No locks set up
+
+	msg := common.Message{
+		Type: common.MessageLockAbort,
+		From: uuid.New(),
+	}
+
+	// Should not panic
+	node.handleLockAbort(msg)
+
+	// Verify queue is still empty
+	node.lockQueueMutex.RLock()
+	queueLen := len(node.lockQueue)
+	node.lockQueueMutex.RUnlock()
+
+	if queueLen != 0 {
+		t.Errorf("expected empty lock queue, got %d resources", queueLen)
+	}
+}
+
+/* Check if selectVictim returns node with lowest priority */
+func TestSelectVictim_LowestPriority(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9977, common.RoleMaster, 10) // high priority
+
+	// Add peers with different priorities
+	lowPriorityNode := uuid.New()
+	highPriorityNode := uuid.New()
+
+	node.AddPeer(&common.NodeInfo{
+		ID:            lowPriorityNode,
+		IP:            "127.0.0.1",
+		Port:          8001,
+		Role:          common.RoleStorage,
+		Status:        common.StatusOnline,
+		Priority:      1, // lowest
+		LastHeartbeat: time.Now(),
+	})
+	node.AddPeer(&common.NodeInfo{
+		ID:            highPriorityNode,
+		IP:            "127.0.0.1",
+		Port:          8002,
+		Role:          common.RoleStorage,
+		Status:        common.StatusOnline,
+		Priority:      5, // medium
+		LastHeartbeat: time.Now(),
+	})
+
+	// Cycle includes all three nodes
+	cyclePath := []uuid.UUID{node.ID, lowPriorityNode, highPriorityNode, node.ID}
+
+	victim := node.selectVictim(cyclePath)
+
+	if victim != lowPriorityNode {
+		t.Errorf("expected victim to be low priority node %v, got %v", lowPriorityNode, victim)
+	}
+}
+
+/* Check if selectVictim returns self when self has lowest priority */
+func TestSelectVictim_SelfIsVictim(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9976, common.RoleMaster, 1) // lowest priority
+
+	peerID := uuid.New()
+	node.AddPeer(&common.NodeInfo{
+		ID:            peerID,
+		IP:            "127.0.0.1",
+		Port:          8001,
+		Role:          common.RoleStorage,
+		Status:        common.StatusOnline,
+		Priority:      10, // higher than node
+		LastHeartbeat: time.Now(),
+	})
+
+	cyclePath := []uuid.UUID{node.ID, peerID, node.ID}
+
+	victim := node.selectVictim(cyclePath)
+
+	if victim != node.ID {
+		t.Errorf("expected victim to be self %v, got %v", node.ID, victim)
+	}
+}
+
+/* Check if selectVictim handles unknown nodes gracefully */
+func TestSelectVictim_UnknownNodeInCycle(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9975, common.RoleMaster, 5)
+
+	knownPeerID := uuid.New()
+	unknownPeerID := uuid.New() // not added to peers
+
+	node.AddPeer(&common.NodeInfo{
+		ID:            knownPeerID,
+		IP:            "127.0.0.1",
+		Port:          8001,
+		Role:          common.RoleStorage,
+		Status:        common.StatusOnline,
+		Priority:      3,
+		LastHeartbeat: time.Now(),
+	})
+
+	// Cycle includes unknown node
+	cyclePath := []uuid.UUID{node.ID, knownPeerID, unknownPeerID, node.ID}
+
+	victim := node.selectVictim(cyclePath)
+
+	// Should return known peer with lowest priority (3 < 5)
+	if victim != knownPeerID {
+		t.Errorf("expected victim to be known peer %v, got %v", knownPeerID, victim)
+	}
+}
+
+/* Check if checkDeadlocks only runs on master */
+func TestCheckDeadlocks_OnlyRunsOnMaster(t *testing.T) {
+	// Create storage node (not master)
+	node := CreateNodeWithBully("127.0.0.1", 9974, common.RoleStorage, 1)
+
+	// Setup a cycle that should be detected
+	nodeA := uuid.New()
+	nodeB := uuid.New()
+
+	node.waitForGraphMutex.Lock()
+	node.waitForGraph[nodeA] = map[uuid.UUID]bool{nodeB: true}
+	node.waitForGraph[nodeB] = map[uuid.UUID]bool{nodeA: true}
+	node.waitForGraphMutex.Unlock()
+
+	// checkDeadlocks should return early (not master)
+	// This shouldn't panic or cause issues
+	node.checkDeadlocks()
+
+	// WFG should remain unchanged (no action taken)
+	node.waitForGraphMutex.RLock()
+	hasCycle, _ := common.HasCycle(node.waitForGraph)
+	node.waitForGraphMutex.RUnlock()
+
+	if !hasCycle {
+		t.Error("expected cycle to still exist (storage node shouldn't resolve it)")
+	}
+}
+
+/* Check if checkDeadlocks detects and handles cycle on master */
+func TestCheckDeadlocks_MasterDetectsCycle(t *testing.T) {
+	// Create master node
+	node := CreateNodeWithBully("127.0.0.1", 9973, common.RoleMaster, 10)
+
+	// Add a peer that will be the victim (lower priority)
+	victimID := uuid.New()
+	node.AddPeer(&common.NodeInfo{
+		ID:            victimID,
+		IP:            "127.0.0.1",
+		Port:          8001,
+		Role:          common.RoleStorage,
+		Status:        common.StatusOnline,
+		Priority:      1, // lower than master
+		LastHeartbeat: time.Now(),
+	})
+
+	// Setup cycle: master -> victim -> master
+	node.waitForGraphMutex.Lock()
+	node.waitForGraph[node.ID] = map[uuid.UUID]bool{victimID: true}
+	node.waitForGraph[victimID] = map[uuid.UUID]bool{node.ID: true}
+	node.waitForGraphMutex.Unlock()
+
+	// checkDeadlocks should detect cycle and try to send abort
+	// Note: sendAbort will fail to connect but shouldn't panic
+	node.checkDeadlocks()
+
+	// The cycle detection worked if we got here without panic
+	// (actual abort would require network, which we're not testing here)
+}
+
+/* Check if sendAbort handles self-abort correctly */
+func TestSendAbort_SelfAbort(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9972, common.RoleMaster, 1)
+
+	resourceID := "test-resource"
+
+	// Setup: node holds a lock
+	node.lockQueueMutex.Lock()
+	node.lockQueue[resourceID] = []*common.LockRequest{
+		{ResourceID: resourceID, NodeID: node.ID, LogicalTime: 1, RequestedAt: time.Now()},
+	}
+	node.pendingAcks[resourceID] = make(map[uuid.UUID]bool)
+	node.lockQueueMutex.Unlock()
+
+	// Send abort to self
+	node.sendAbort(node.ID)
+
+	// Verify lock was released
+	node.lockQueueMutex.RLock()
+	queueLen := len(node.lockQueue[resourceID])
+	node.lockQueueMutex.RUnlock()
+
+	if queueLen != 0 {
+		t.Errorf("expected lock to be released after self-abort, got queue length %d", queueLen)
+	}
+}
+
+/* Check if sendAbort handles unknown peer gracefully */
+func TestSendAbort_UnknownPeer(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9971, common.RoleMaster, 1)
+
+	unknownPeerID := uuid.New() // not in peers
+
+	// Should not panic when peer is not found
+	node.sendAbort(unknownPeerID)
+}

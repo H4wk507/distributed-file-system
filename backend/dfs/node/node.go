@@ -195,6 +195,8 @@ func (n *Node) processMessage(ctx context.Context, msg common.Message) {
 		n.handleLockAcquired(msg)
 	case MessageLockRelease:
 		n.handleLockRelease(msg)
+	case MessageLockAbort:
+		n.handleLockAbort(msg)
 	default:
 		n.logger.Printf("Received msg of type %s from %s", msg.Type, msg.From)
 	}
@@ -375,7 +377,29 @@ func (n *Node) handleLockRelease(msg Message) {
 			break
 		}
 	}
+}
 
+func (n *Node) handleLockAbort(msg Message) {
+	// To zwalnia locki na wszystkich resources dla danego node'a. Nie mamy tego rozróżnienia w grafie.
+	// TODO: Dodać to rozróżnienie na przyszłość??
+
+	n.logger.Printf("Received lock abort from %s", msg.From)
+
+	n.lockQueueMutex.Lock()
+	resourcesToRelease := []string{}
+	for resourceID, queue := range n.lockQueue {
+		for _, req := range queue {
+			if req.NodeID == n.ID {
+				resourcesToRelease = append(resourcesToRelease, resourceID)
+				break
+			}
+		}
+	}
+	n.lockQueueMutex.Unlock()
+
+	for _, resourceID := range resourcesToRelease {
+		n.ReleaseLock(resourceID)
+	}
 }
 
 func (n *Node) startHeartbeat(ctx context.Context) {
@@ -520,10 +544,14 @@ func (n *Node) checkLocksTimeouts() {
 }
 
 func (n *Node) checkDeadlocks() {
+	if n.Role != common.RoleMaster {
+		return
+	}
 	hasCycle, cyclePath := common.HasCycle(n.waitForGraph)
 	if hasCycle {
 		n.logger.Printf("Cycle detected in waitForGraph: %v", cyclePath)
-		// TODO: do something
+		victim := n.selectVictim(cyclePath)
+		n.sendAbort(victim)
 	}
 }
 
@@ -644,6 +672,48 @@ func (n *Node) announceJoin() {
 	}
 
 	n.BroadcastMessage(msg)
+}
+
+func (n *Node) selectVictim(cyclePath []uuid.UUID) uuid.UUID {
+	var victim uuid.UUID
+	lowestPriority := int(^uint(0) >> 1)
+	for _, nodeID := range cyclePath {
+		var priority int
+		if nodeID == n.ID {
+			priority = n.Priority
+		} else if peer, exists := n.GetPeer(nodeID); exists {
+			priority = peer.Priority
+		} else {
+			continue
+		}
+
+		if priority < lowestPriority {
+			lowestPriority = priority
+			victim = nodeID
+		}
+	}
+	return victim
+}
+
+func (n *Node) sendAbort(victim uuid.UUID) {
+	msg := Message{
+		Type: common.MessageLockAbort,
+		From: n.ID,
+	}
+
+	if victim == n.ID {
+		n.logger.Printf("Aborting lock on myself")
+		n.handleLockAbort(msg)
+		return
+	}
+
+	peer, exists := n.GetPeer(victim)
+	if !exists {
+		n.logger.Printf("Peer %s not found", victim)
+		return
+	}
+
+	go n.SendMessage(peer.IP, peer.Port, msg)
 }
 
 func (n *Node) AddPeer(peer *NodeInfo) {

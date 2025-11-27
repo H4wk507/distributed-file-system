@@ -48,6 +48,7 @@ const (
 	MessageLockAck      MessageType = "lock_ack"
 	MessageLockAcquired MessageType = "lock_acquired"
 	MessageLockRelease  MessageType = "lock_release"
+	MessageLockAbort    MessageType = "lock_abort"
 )
 
 type Message struct {
