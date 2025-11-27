@@ -2,6 +2,7 @@ package node
 
 import (
 	"dfs-backend/dfs/common"
+	"encoding/json"
 	"sort"
 	"testing"
 	"time"
@@ -503,5 +504,395 @@ func TestMultipleResourceLocks(t *testing.T) {
 	// We SHOULD be able to enter CS for resource2 (we are first, no peers)
 	if !node.CanEnterCriticalSection(resource2) {
 		t.Error("expected to be able to enter CS for resource2 (we hold it)")
+	}
+}
+
+/* Check if EnterCriticalSection returns true when conditions are met */
+func TestEnterCriticalSection_Success(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9989, common.RoleStorage, 1)
+
+	resourceID := "test-resource"
+
+	// Our node's lock request (first in queue)
+	ourRequest := &common.LockRequest{
+		ResourceID:  resourceID,
+		NodeID:      node.ID,
+		LogicalTime: 1,
+		Status:      common.StatusPending,
+		RequestedAt: time.Now(),
+	}
+
+	node.lockQueueMutex.Lock()
+	node.lockQueue[resourceID] = []*common.LockRequest{ourRequest}
+	node.pendingAcks[resourceID] = make(map[uuid.UUID]bool) // no peers, no acks needed
+	node.lockQueueMutex.Unlock()
+
+	// Should successfully enter critical section
+	if !node.EnterCriticalSection(resourceID) {
+		t.Error("expected EnterCriticalSection to return true when conditions are met")
+	}
+}
+
+/* Check if EnterCriticalSection returns false when conditions are not met */
+func TestEnterCriticalSection_Failure_NotFirstInQueue(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9988, common.RoleStorage, 1)
+
+	resourceID := "test-resource"
+	otherNodeID := uuid.New()
+
+	// Other node's request is first
+	otherRequest := &common.LockRequest{
+		ResourceID:  resourceID,
+		NodeID:      otherNodeID,
+		LogicalTime: 1,
+		Status:      common.StatusPending,
+		RequestedAt: time.Now(),
+	}
+
+	// Our request is second
+	ourRequest := &common.LockRequest{
+		ResourceID:  resourceID,
+		NodeID:      node.ID,
+		LogicalTime: 2,
+		Status:      common.StatusPending,
+		RequestedAt: time.Now(),
+	}
+
+	node.lockQueueMutex.Lock()
+	node.lockQueue[resourceID] = []*common.LockRequest{otherRequest, ourRequest}
+	node.pendingAcks[resourceID] = make(map[uuid.UUID]bool)
+	node.lockQueueMutex.Unlock()
+
+	// Should NOT enter critical section
+	if node.EnterCriticalSection(resourceID) {
+		t.Error("expected EnterCriticalSection to return false when not first in queue")
+	}
+}
+
+/* Check if handleLockAcquired updates lockHolders correctly */
+func TestHandleLockAcquired_UpdatesLockHolders(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9987, common.RoleStorage, 1)
+
+	resourceID := "test-resource"
+	holderID := uuid.New()
+
+	// Simulate receiving a LockAcquired message
+	payload, _ := json.Marshal(resourceID)
+	msg := common.Message{
+		Type:    common.MessageLockAcquired,
+		From:    holderID,
+		Payload: payload,
+	}
+
+	node.handleLockAcquired(msg)
+
+	// Verify lockHolders was updated
+	node.lockQueueMutex.RLock()
+	holder, exists := node.lockHolders[resourceID]
+	node.lockQueueMutex.RUnlock()
+
+	if !exists {
+		t.Fatal("expected lockHolders to contain the resource")
+	}
+
+	if holder != holderID {
+		t.Errorf("expected holder to be %v, got %v", holderID, holder)
+	}
+}
+
+/* Check if handleLockRelease removes from lockHolders */
+func TestHandleLockRelease_RemovesFromLockHolders(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9986, common.RoleStorage, 1)
+
+	resourceID := "test-resource"
+	holderID := uuid.New()
+
+	// Setup: holder already has the lock
+	node.lockQueueMutex.Lock()
+	node.lockHolders[resourceID] = holderID
+	node.lockQueue[resourceID] = []*common.LockRequest{
+		{
+			ResourceID:  resourceID,
+			NodeID:      holderID,
+			LogicalTime: 1,
+			Status:      common.StatusPending,
+			RequestedAt: time.Now(),
+		},
+	}
+	node.lockQueueMutex.Unlock()
+
+	// Simulate receiving a LockRelease message
+	payload, _ := json.Marshal(resourceID)
+	msg := common.Message{
+		Type:    common.MessageLockRelease,
+		From:    holderID,
+		Payload: payload,
+	}
+
+	node.handleLockRelease(msg)
+
+	// Verify lockHolders was cleared
+	node.lockQueueMutex.RLock()
+	_, exists := node.lockHolders[resourceID]
+	queueLen := len(node.lockQueue[resourceID])
+	node.lockQueueMutex.RUnlock()
+
+	if exists {
+		t.Error("expected lockHolders to NOT contain the resource after release")
+	}
+
+	if queueLen != 0 {
+		t.Errorf("expected queue to be empty after release, got %d", queueLen)
+	}
+}
+
+/* Check if Wait-For Graph edge is added when lock request comes in and holder exists */
+func TestWaitForGraph_EdgeAddedOnLockRequest(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9985, common.RoleStorage, 1)
+
+	resourceID := "test-resource"
+	holderID := uuid.New()
+	waiterID := uuid.New()
+
+	// Setup: holderID already holds the lock
+	node.lockQueueMutex.Lock()
+	node.lockHolders[resourceID] = holderID
+	node.lockQueueMutex.Unlock()
+
+	// Add waiter as peer so we can send ack
+	node.AddPeer(&common.NodeInfo{
+		ID:            waiterID,
+		IP:            "127.0.0.1",
+		Port:          8001,
+		Role:          common.RoleStorage,
+		Status:        common.StatusOnline,
+		Priority:      2,
+		LastHeartbeat: time.Now(),
+	})
+
+	// Simulate waiter requesting the lock
+	lockRequest := common.LockRequest{
+		ResourceID:  resourceID,
+		NodeID:      waiterID,
+		LogicalTime: 2,
+		Status:      common.StatusPending,
+		RequestedAt: time.Now(),
+	}
+	payload, _ := json.Marshal(lockRequest)
+	msg := common.Message{
+		Type:    common.MessageLockRequest,
+		From:    waiterID,
+		Payload: payload,
+	}
+
+	node.handleLockRequest(msg)
+
+	// Verify edge was added: waiter -> holder
+	node.waitForGraphMutex.RLock()
+	waitsFor, exists := node.waitForGraph[waiterID]
+	node.waitForGraphMutex.RUnlock()
+
+	if !exists {
+		t.Fatal("expected waitForGraph to contain waiter")
+	}
+
+	if !waitsFor[holderID] {
+		t.Errorf("expected waiter %v to wait for holder %v", waiterID, holderID)
+	}
+}
+
+/* Check if Wait-For Graph edge is NOT added when no holder exists */
+func TestWaitForGraph_NoEdgeWhenNoHolder(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9984, common.RoleStorage, 1)
+
+	resourceID := "test-resource"
+	waiterID := uuid.New()
+
+	// No holder set for this resource
+
+	// Add waiter as peer
+	node.AddPeer(&common.NodeInfo{
+		ID:            waiterID,
+		IP:            "127.0.0.1",
+		Port:          8001,
+		Role:          common.RoleStorage,
+		Status:        common.StatusOnline,
+		Priority:      2,
+		LastHeartbeat: time.Now(),
+	})
+
+	// Simulate waiter requesting the lock
+	lockRequest := common.LockRequest{
+		ResourceID:  resourceID,
+		NodeID:      waiterID,
+		LogicalTime: 1,
+		Status:      common.StatusPending,
+		RequestedAt: time.Now(),
+	}
+	payload, _ := json.Marshal(lockRequest)
+	msg := common.Message{
+		Type:    common.MessageLockRequest,
+		From:    waiterID,
+		Payload: payload,
+	}
+
+	node.handleLockRequest(msg)
+
+	// Verify NO edge was added
+	node.waitForGraphMutex.RLock()
+	_, exists := node.waitForGraph[waiterID]
+	node.waitForGraphMutex.RUnlock()
+
+	if exists {
+		t.Error("expected NO edge in waitForGraph when no holder exists")
+	}
+}
+
+/* Check if Wait-For Graph edges are removed when lock is released */
+func TestWaitForGraph_EdgesRemovedOnRelease(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9983, common.RoleStorage, 1)
+
+	resourceID := "test-resource"
+	holderID := uuid.New()
+	waiter1ID := uuid.New()
+	waiter2ID := uuid.New()
+
+	// Setup: holderID holds lock, waiter1 and waiter2 are waiting
+	node.lockQueueMutex.Lock()
+	node.lockHolders[resourceID] = holderID
+	node.lockQueue[resourceID] = []*common.LockRequest{
+		{ResourceID: resourceID, NodeID: holderID, LogicalTime: 1, RequestedAt: time.Now()},
+	}
+	node.lockQueueMutex.Unlock()
+
+	// Setup WFG: waiter1 -> holder, waiter2 -> holder
+	node.waitForGraphMutex.Lock()
+	node.waitForGraph[waiter1ID] = map[uuid.UUID]bool{holderID: true}
+	node.waitForGraph[waiter2ID] = map[uuid.UUID]bool{holderID: true}
+	node.waitForGraphMutex.Unlock()
+
+	// Simulate holder releasing the lock
+	payload, _ := json.Marshal(resourceID)
+	msg := common.Message{
+		Type:    common.MessageLockRelease,
+		From:    holderID,
+		Payload: payload,
+	}
+
+	node.handleLockRelease(msg)
+
+	// Verify edges to holder were removed
+	node.waitForGraphMutex.RLock()
+	waiter1WaitsFor := node.waitForGraph[waiter1ID]
+	waiter2WaitsFor := node.waitForGraph[waiter2ID]
+	node.waitForGraphMutex.RUnlock()
+
+	if waiter1WaitsFor[holderID] {
+		t.Error("expected waiter1's edge to holder to be removed")
+	}
+
+	if waiter2WaitsFor[holderID] {
+		t.Error("expected waiter2's edge to holder to be removed")
+	}
+}
+
+/* Check if Wait-For Graph preserves edges to other nodes on release */
+func TestWaitForGraph_PreservesOtherEdgesOnRelease(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9982, common.RoleStorage, 1)
+
+	resourceID := "test-resource"
+	holderID := uuid.New()
+	otherHolderID := uuid.New()
+	waiterID := uuid.New()
+
+	// Setup: holderID holds lock
+	node.lockQueueMutex.Lock()
+	node.lockHolders[resourceID] = holderID
+	node.lockQueue[resourceID] = []*common.LockRequest{
+		{ResourceID: resourceID, NodeID: holderID, LogicalTime: 1, RequestedAt: time.Now()},
+	}
+	node.lockQueueMutex.Unlock()
+
+	// Setup WFG: waiter -> holder AND waiter -> otherHolder (for different resource)
+	node.waitForGraphMutex.Lock()
+	node.waitForGraph[waiterID] = map[uuid.UUID]bool{
+		holderID:      true,
+		otherHolderID: true,
+	}
+	node.waitForGraphMutex.Unlock()
+
+	// Simulate holder releasing the lock
+	payload, _ := json.Marshal(resourceID)
+	msg := common.Message{
+		Type:    common.MessageLockRelease,
+		From:    holderID,
+		Payload: payload,
+	}
+
+	node.handleLockRelease(msg)
+
+	// Verify only edge to holderID was removed, edge to otherHolderID remains
+	node.waitForGraphMutex.RLock()
+	waitsFor := node.waitForGraph[waiterID]
+	node.waitForGraphMutex.RUnlock()
+
+	if waitsFor[holderID] {
+		t.Error("expected edge to released holder to be removed")
+	}
+
+	if !waitsFor[otherHolderID] {
+		t.Error("expected edge to other holder to be preserved")
+	}
+}
+
+/* Check if Wait-For Graph detects simple cycle */
+func TestWaitForGraph_DetectsCycle(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9981, common.RoleStorage, 1)
+
+	nodeA := uuid.New()
+	nodeB := uuid.New()
+
+	// Setup cycle: A -> B -> A
+	node.waitForGraphMutex.Lock()
+	node.waitForGraph[nodeA] = map[uuid.UUID]bool{nodeB: true}
+	node.waitForGraph[nodeB] = map[uuid.UUID]bool{nodeA: true}
+	node.waitForGraphMutex.Unlock()
+
+	// Check for cycle
+	node.waitForGraphMutex.RLock()
+	hasCycle, path := common.HasCycle(node.waitForGraph)
+	node.waitForGraphMutex.RUnlock()
+
+	if !hasCycle {
+		t.Error("expected cycle to be detected")
+	}
+
+	if len(path) < 2 {
+		t.Errorf("expected path with at least 2 nodes, got %v", path)
+	}
+}
+
+/* Check if Wait-For Graph reports no cycle when none exists */
+func TestWaitForGraph_NoCycleWhenLinear(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9980, common.RoleStorage, 1)
+
+	nodeA := uuid.New()
+	nodeB := uuid.New()
+	nodeC := uuid.New()
+
+	// Setup linear chain: A -> B -> C (no cycle)
+	node.waitForGraphMutex.Lock()
+	node.waitForGraph[nodeA] = map[uuid.UUID]bool{nodeB: true}
+	node.waitForGraph[nodeB] = map[uuid.UUID]bool{nodeC: true}
+	node.waitForGraph[nodeC] = make(map[uuid.UUID]bool) // C waits for no one
+	node.waitForGraphMutex.Unlock()
+
+	// Check for cycle
+	node.waitForGraphMutex.RLock()
+	hasCycle, path := common.HasCycle(node.waitForGraph)
+	node.waitForGraphMutex.RUnlock()
+
+	if hasCycle {
+		t.Errorf("expected no cycle in linear chain, but got path %v", path)
 	}
 }

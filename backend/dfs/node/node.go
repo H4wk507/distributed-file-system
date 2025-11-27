@@ -39,26 +39,32 @@ type Node struct {
 
 	lockQueue      map[string][]*LockRequest // key = resourceID, value = request queue
 	pendingAcks    map[string]map[uuid.UUID]bool
+	lockHolders    map[string]uuid.UUID // key = resourceID, value = NodeID that holds the lock
 	lockQueueMutex sync.RWMutex
+
+	waitForGraph      map[uuid.UUID]map[uuid.UUID]bool // key = NodeID that waits, value = map of NodeIDs for which key waits
+	waitForGraphMutex sync.RWMutex
 
 	logger *log.Logger
 }
 
 func CreateNodeWithBully(ip string, port int, role NodeRole, priority int) *Node {
 	n := &Node{
-		ID:          uuid.New(),
-		IP:          ip,
-		Port:        port,
-		Role:        role,
-		Status:      StatusStarting,
-		Priority:    priority,
-		Peers:       make(map[uuid.UUID]*NodeInfo),
-		messageChan: make(chan common.Message, 100),
-		stopChan:    make(chan struct{}),
-		logicalTime: 0,
-		lockQueue:   make(map[string][]*LockRequest),
-		pendingAcks: make(map[string]map[uuid.UUID]bool),
-		logger:      log.New(log.Writer(), fmt.Sprintf("[Node %s] ", role), log.LstdFlags),
+		ID:           uuid.New(),
+		IP:           ip,
+		Port:         port,
+		Role:         role,
+		Status:       StatusStarting,
+		Priority:     priority,
+		Peers:        make(map[uuid.UUID]*NodeInfo),
+		messageChan:  make(chan common.Message, 100),
+		stopChan:     make(chan struct{}),
+		logicalTime:  0,
+		lockQueue:    make(map[string][]*LockRequest),
+		pendingAcks:  make(map[string]map[uuid.UUID]bool),
+		lockHolders:  make(map[string]uuid.UUID),
+		waitForGraph: make(map[uuid.UUID]map[uuid.UUID]bool),
+		logger:       log.New(log.Writer(), fmt.Sprintf("[Node %s] ", role), log.LstdFlags),
 	}
 
 	n.elector = election.NewBullyElector(n)
@@ -81,6 +87,7 @@ func (n *Node) Start(ctx context.Context) error {
 	go n.startHeartbeat(ctx)
 	go n.monitorPeers(ctx)
 	go n.monitorLocks(ctx)
+	go n.monitorDeadlocks(ctx)
 	if err := n.elector.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start elector: %w", err)
 	}
@@ -184,6 +191,8 @@ func (n *Node) processMessage(ctx context.Context, msg common.Message) {
 		n.handleLockRequest(msg)
 	case MessageLockAck:
 		n.handleLockAck(msg)
+	case MessageLockAcquired:
+		n.handleLockAcquired(msg)
 	case MessageLockRelease:
 		n.handleLockRelease(msg)
 	default:
@@ -277,6 +286,17 @@ func (n *Node) handleLockRequest(msg Message) {
 	sort.SliceStable(queue, func(i, j int) bool {
 		return common.CompareLockRequests(queue[i], queue[j])
 	})
+
+	holder, exists := n.lockHolders[lockRequest.ResourceID]
+	if exists && holder != lockRequest.NodeID {
+		n.waitForGraphMutex.Lock()
+		if n.waitForGraph[lockRequest.NodeID] == nil {
+			n.waitForGraph[lockRequest.NodeID] = make(map[uuid.UUID]bool)
+		}
+		n.waitForGraph[lockRequest.NodeID][holder] = true
+		n.waitForGraphMutex.Unlock()
+	}
+
 	n.lockQueueMutex.Unlock()
 
 	n.peerMutex.RLock()
@@ -314,6 +334,18 @@ func (n *Node) handleLockAck(msg Message) {
 	n.logger.Printf("Received ack for %s from %s (total: %d/%d)", resourceID, msg.From, len(n.pendingAcks[resourceID]), len(n.Peers))
 }
 
+func (n *Node) handleLockAcquired(msg Message) {
+	var resourceID string
+	if err := json.Unmarshal(msg.Payload, &resourceID); err != nil {
+		n.logger.Printf("Failed to unmarshal lock acquired payload: %v", err)
+		return
+	}
+
+	n.lockQueueMutex.Lock()
+	n.lockHolders[resourceID] = msg.From
+	n.lockQueueMutex.Unlock()
+}
+
 func (n *Node) handleLockRelease(msg Message) {
 	var resourceID string
 	if err := json.Unmarshal(msg.Payload, &resourceID); err != nil {
@@ -323,6 +355,18 @@ func (n *Node) handleLockRelease(msg Message) {
 
 	n.lockQueueMutex.Lock()
 	defer n.lockQueueMutex.Unlock()
+
+	n.waitForGraphMutex.Lock()
+	for waiter := range n.waitForGraph {
+		for nodeID := range n.waitForGraph[waiter] {
+			if nodeID == msg.From {
+				delete(n.waitForGraph[waiter], nodeID)
+			}
+		}
+	}
+	n.waitForGraphMutex.Unlock()
+
+	delete(n.lockHolders, resourceID)
 
 	for i, req := range n.lockQueue[resourceID] {
 		if req.NodeID == msg.From {
@@ -408,6 +452,22 @@ func (n *Node) monitorLocks(ctx context.Context) {
 	}
 }
 
+func (n *Node) monitorDeadlocks(ctx context.Context) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-n.stopChan:
+			return
+		case <-ticker.C:
+			n.checkDeadlocks()
+		}
+	}
+}
+
 func (n *Node) checkPeersHealth() {
 	n.peerMutex.Lock()
 	defer n.peerMutex.Unlock()
@@ -457,7 +517,14 @@ func (n *Node) checkLocksTimeouts() {
 		}
 		n.BroadcastMessage(msg)
 	}
+}
 
+func (n *Node) checkDeadlocks() {
+	hasCycle, cyclePath := common.HasCycle(n.waitForGraph)
+	if hasCycle {
+		n.logger.Printf("Cycle detected in waitForGraph: %v", cyclePath)
+		// TODO: do something
+	}
 }
 
 func (n *Node) SendMessage(ip string, port int, msg common.Message) error {
@@ -773,4 +840,20 @@ func (n *Node) CanEnterCriticalSection(resourceID string) bool {
 	}
 
 	return receivedAcks >= expectedAcks
+}
+
+func (n *Node) EnterCriticalSection(resourceID string) bool {
+	if !n.CanEnterCriticalSection(resourceID) {
+		return false
+	}
+
+	payload, _ := json.Marshal(resourceID)
+	msg := Message{
+		Type:    common.MessageLockAcquired,
+		From:    n.ID,
+		Payload: payload,
+	}
+	n.BroadcastMessage(msg)
+
+	return true
 }

@@ -1,0 +1,7 @@
+Graf skierowany. Węzeł = node, krawędź A -> B = węzeł A czeka na zasób, na którym B trzyma locka.
+Cykl w takim grafie = deadlock.
+
+Problem sprowadza się do:
+1. Budowy grafu
+2. Wykrycia cykli (np. co 10s)
+3. Rozwiązywanie deadlocków

@@ -44,9 +44,10 @@ const (
 	MessageCoordinator MessageType = "coordinator"
 	MessageOK          MessageType = "ok"
 
-	MessageLockRequest MessageType = "lock_request"
-	MessageLockAck     MessageType = "lock_ack"
-	MessageLockRelease MessageType = "lock_release"
+	MessageLockRequest  MessageType = "lock_request"
+	MessageLockAck      MessageType = "lock_ack"
+	MessageLockAcquired MessageType = "lock_acquired"
+	MessageLockRelease  MessageType = "lock_release"
 )
 
 type Message struct {
@@ -79,3 +80,11 @@ type LockRequest struct {
 	Status      LockStatus `json:"lock_status"`
 	RequestedAt time.Time  `json:"requested_at"`
 }
+
+type GraphNodeStatus string
+
+const (
+	GraphNodeStatusNotVisited GraphNodeStatus = "not_visited"
+	GraphNodeStatusVisiting   GraphNodeStatus = "visiting"
+	GraphNodeStatusVisited    GraphNodeStatus = "visited"
+)

@@ -94,16 +94,16 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 1. Wait-For Graph
 
-- Zaimplementować strukturę wait-for graph jako słownik
-- Zaimplementować dodawanie krawędzi przy LOCK_REQUEST
-- Zaimplementować usuwanie krawędzi przy LOCK_RELEASE
+- [x] Zaimplementować strukturę wait-for graph jako słownik
+- [x] Zaimplementować dodawanie krawędzi przy LOCK_REQUEST
+- [x] Zaimplementować usuwanie krawędzi przy LOCK_RELEASE
 - Zaimplementować agregację informacji o lockach na masterze
 - Zaimplementować budowanie globalnego grafu
 
 2. Detekcja cykli
 
-- Zaimplementować DFS do wykrywania cykli w grafie
-- Zaimplementować okresowe uruchamianie detekcji (co 10s)
+- [x] Zaimplementować DFS do wykrywania cykli w grafie
+- [x] Zaimplementować okresowe uruchamianie detekcji (co 10s)
 - Zaimplementować wybór "ofiary" - węzeł do aborcji
 - Zaimplementować wysyłanie ABORT do węzła-ofiary
 
