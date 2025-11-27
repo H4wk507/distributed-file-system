@@ -124,9 +124,9 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 2. Consistent Hashing
 
-- Zaimplementować ring hashing - węzły na pierścieniu 0-2^32
-- Zaimplementować funkcję hash_key(filename) -> pozycja na pierścieniu
-- Zaimplementować funkcję find_nodes_for_file zwracającą N węzłów storage
+- [x] Zaimplementować ring hashing - węzły na pierścieniu 0-2^32
+- [x] Zaimplementować funkcję hash_key(filename) -> pozycja na pierścieniu
+- [x] Zaimplementować funkcję find_nodes_for_file zwracającą N węzłów storage
 - Zaimplementować rebalancing przy dodaniu/usunięciu węzła
 
 3. Lokalne przechowywanie
