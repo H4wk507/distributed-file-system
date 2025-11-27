@@ -80,6 +80,7 @@ func (n *Node) Start(ctx context.Context) error {
 	go n.handleMessages(ctx)
 	go n.startHeartbeat(ctx)
 	go n.monitorPeers(ctx)
+	go n.monitorLocks(ctx)
 	if err := n.elector.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start elector: %w", err)
 	}
@@ -391,6 +392,22 @@ func (n *Node) monitorPeers(ctx context.Context) {
 	}
 }
 
+func (n *Node) monitorLocks(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-n.stopChan:
+			return
+		case <-ticker.C:
+			n.checkLocksTimeouts()
+		}
+	}
+}
+
 func (n *Node) checkPeersHealth() {
 	n.peerMutex.Lock()
 	defer n.peerMutex.Unlock()
@@ -406,6 +423,41 @@ func (n *Node) checkPeersHealth() {
 			delete(n.Peers, id)
 		}
 	}
+}
+
+func (n *Node) checkLocksTimeouts() {
+	n.lockQueueMutex.Lock()
+
+	var toRealease []string
+
+	for resourceID, queue := range n.lockQueue {
+		newQueue := make([]*LockRequest, 0)
+		for _, req := range queue {
+			if time.Since(req.RequestedAt) > common.LOCK_TIMEOUT {
+				n.logger.Printf("Lock request timeout on resource %s by node %s", resourceID, req.NodeID)
+				if req.NodeID == n.ID {
+					delete(n.pendingAcks, resourceID)
+					toRealease = append(toRealease, resourceID)
+				}
+				continue
+			}
+			newQueue = append(newQueue, req)
+		}
+		n.lockQueue[resourceID] = newQueue
+	}
+	n.lockQueueMutex.Unlock()
+
+	for _, resourceID := range toRealease {
+		n.logger.Printf("Releasing lock on %s due to timeout", resourceID)
+		payload, _ := json.Marshal(resourceID)
+		msg := Message{
+			Type:    common.MessageLockRelease,
+			From:    n.ID,
+			Payload: payload,
+		}
+		n.BroadcastMessage(msg)
+	}
+
 }
 
 func (n *Node) SendMessage(ip string, port int, msg common.Message) error {
@@ -633,6 +685,7 @@ func (n *Node) RequestLock(resourceID string) {
 		NodeID:      n.ID,
 		LogicalTime: newTime,
 		Status:      common.StatusPending,
+		RequestedAt: time.Now(),
 	}
 
 	n.lockQueueMutex.Lock()
@@ -656,13 +709,14 @@ func (n *Node) RequestLock(resourceID string) {
 
 func (n *Node) ReleaseLock(resourceID string) {
 	n.lockQueueMutex.Lock()
-	defer n.lockQueueMutex.Unlock()
 	for i, req := range n.lockQueue[resourceID] {
 		if req.NodeID == n.ID {
 			n.lockQueue[resourceID] = append(n.lockQueue[resourceID][:i], n.lockQueue[resourceID][i+1:]...)
 			break
 		}
 	}
+	delete(n.pendingAcks, resourceID)
+	n.lockQueueMutex.Unlock()
 
 	payload, _ := json.Marshal(resourceID)
 	msg := Message{
@@ -672,20 +726,34 @@ func (n *Node) ReleaseLock(resourceID string) {
 	}
 	n.BroadcastMessage(msg)
 
-	delete(n.pendingAcks, resourceID)
-
 	n.logger.Printf("Released lock on %s", resourceID)
 }
 
 func (n *Node) CanEnterCriticalSection(resourceID string) bool {
-	n.lockQueueMutex.RLock()
-	defer n.lockQueueMutex.RUnlock()
+	n.lockQueueMutex.Lock()
+	defer n.lockQueueMutex.Unlock()
 
 	if len(n.lockQueue[resourceID]) == 0 {
 		return false
 	}
 
-	if n.lockQueue[resourceID][0].NodeID != n.ID {
+	for len(n.lockQueue[resourceID]) > 0 {
+		first := n.lockQueue[resourceID][0]
+		if time.Since(first.RequestedAt) <= common.LOCK_TIMEOUT {
+			break
+		}
+		n.lockQueue[resourceID] = n.lockQueue[resourceID][1:]
+		if first.NodeID == n.ID {
+			delete(n.pendingAcks, resourceID)
+		}
+	}
+
+	if len(n.lockQueue[resourceID]) == 0 {
+		return false
+	}
+
+	first := n.lockQueue[resourceID][0]
+	if first.NodeID != n.ID {
 		return false
 	}
 

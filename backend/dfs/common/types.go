@@ -69,9 +69,13 @@ const (
 	StatusReleased LockStatus = "released"
 )
 
+// TODO: Co jeśli upload pliku zajmie więcej niż 30 sekund? LOCK_HEARTBEAT bardziej elastyczne
+const LOCK_TIMEOUT = 30 * time.Second
+
 type LockRequest struct {
 	ResourceID  string     `json:"resource_id"`
 	NodeID      uuid.UUID  `json:"node_id"`
 	LogicalTime int        `json:"logical_time"`
 	Status      LockStatus `json:"lock_status"`
+	RequestedAt time.Time  `json:"requested_at"`
 }

@@ -86,9 +86,9 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 3. Timeout dla blokad
 
-- Zaimplementować timeout na lock (np. 30s)
-- Zaimplementować auto-release przy timeout
-- Zaimplementować obsługę node failure podczas trzymania locka
+- [x] Zaimplementować timeout na lock (np. 30s)
+- [x] Zaimplementować auto-release przy timeout
+- [x] Zaimplementować obsługę node failure podczas trzymania locka
 
 ### WYKRYWANIE ZAKLESZCZEŃ
 
