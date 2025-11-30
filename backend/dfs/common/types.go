@@ -50,10 +50,11 @@ const (
 	MessageLockRelease  MessageType = "lock_release"
 	MessageLockAbort    MessageType = "lock_abort"
 
-	MessageFileStore    MessageType = "file_store"
-	MessageFileStoreAck MessageType = "file_storage_ack"
-	MessageFileRetrieve MessageType = "file_retrieve"
-	MessageFileDelete   MessageType = "file_delete"
+	MessageFileStore            MessageType = "file_store"
+	MessageFileStoreAck         MessageType = "file_storage_ack"
+	MessageFileRetrieve         MessageType = "file_retrieve"
+	MessageFileRetrieveResponse MessageType = "file_retrieve_response"
+	MessageFileDelete           MessageType = "file_delete"
 )
 
 type Message struct {
@@ -94,3 +95,36 @@ const (
 	GraphNodeStatusVisiting   GraphNodeStatus = "visiting"
 	GraphNodeStatusVisited    GraphNodeStatus = "visited"
 )
+
+type PendingUpload struct {
+	FileID        uuid.UUID
+	Filename      string
+	Hash          string
+	ExpectedNodes []uuid.UUID
+	ReceivedAcks  map[uuid.UUID]string
+	CreatedAt     time.Time
+}
+
+type FileStoreRequest struct {
+	FileID      uuid.UUID `json:"file_id"`
+	Filename    string    `json:"filename"`
+	ContentType string    `json:"content_type"`
+	Size        int64     `json:"size"`
+	Data        []byte    `json:"data"`
+}
+
+type FileStoreResponse struct {
+	Hash   string    `json:"hash"`
+	FileID uuid.UUID `json:"file_id"`
+}
+
+type FileRetrieveRequest struct {
+	Hash string `json:"hash"`
+}
+
+type FileRetrieveResponse struct {
+	FileID   uuid.UUID `json:"file_id"`
+	Filename string    `json:"filename"`
+	Hash     string    `json:"hash"`
+	Data     []byte    `json:"data"`
+}

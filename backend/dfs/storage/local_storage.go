@@ -69,9 +69,26 @@ func (s *LocalStorage) SaveFile(fileID uuid.UUID, filename string, contentType s
 	s.mutex.Unlock()
 
 	if err := s.SaveIndex(); err != nil {
-		return nil, fmt.Errorf("file saved buy index update failed: %w", err)
+		return nil, fmt.Errorf("file saved but index update failed: %w", err)
 	}
 	return &metadata, nil
+}
+
+func (s *LocalStorage) DeleteFile(hash string) error {
+	path := s.filePath(hash)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to delete file: %w", err)
+	}
+
+	s.mutex.Lock()
+	delete(s.index, hash)
+	s.mutex.Unlock()
+
+	if err := s.SaveIndex(); err != nil {
+		return fmt.Errorf("file deleted but index update failed: %w", err)
+	}
+
+	return nil
 }
 
 func (s *LocalStorage) GetFile(hash string) (io.ReadCloser, *FileMetadata, error) {

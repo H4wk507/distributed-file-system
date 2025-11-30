@@ -1,13 +1,16 @@
 package node
 
 import (
+	"bytes"
 	"context"
 	"dfs-backend/dfs/common"
 	. "dfs-backend/dfs/common"
 	"dfs-backend/dfs/election"
+	"dfs-backend/dfs/hashing"
 	"dfs-backend/dfs/storage"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"sort"
@@ -46,7 +49,12 @@ type Node struct {
 	waitForGraph      map[uuid.UUID]map[uuid.UUID]bool // key = NodeID that waits, value = map of NodeIDs for which key waits
 	waitForGraphMutex sync.RWMutex
 
+	hashRing *hashing.HashRing // tylko dla master, nil dla storage nodes
+
 	storage *storage.LocalStorage
+
+	pendingUploads      map[uuid.UUID]*common.PendingUpload // tylko dla master, nil dla storage nodes
+	pendingUploadsMutex sync.RWMutex
 
 	logger *log.Logger
 }
@@ -84,6 +92,7 @@ func (n *Node) Start(ctx context.Context) error {
 	}
 	n.listener = listener
 	n.Status = StatusOnline
+	n.SetRole(n.Role)
 	n.storage.LoadIndex()
 	n.logger.Printf("Node started on %s (ID: %s, Priority: %d)", addr, n.ID, n.Priority)
 
@@ -202,6 +211,16 @@ func (n *Node) processMessage(ctx context.Context, msg common.Message) {
 		n.handleLockRelease(msg)
 	case MessageLockAbort:
 		n.handleLockAbort(msg)
+	case MessageFileStore:
+		n.handleFileStore(msg)
+	case MessageFileStoreAck:
+		n.handleFileStoreAck(msg)
+	case MessageFileRetrieve:
+		n.handleFileRetrieve(msg)
+	case MessageFileRetrieveResponse:
+		n.handleFileRetrieveResponse(msg)
+	case MessageFileDelete:
+		n.handleFileDelete(msg)
 	default:
 		n.logger.Printf("Received msg of type %s from %s", msg.Type, msg.From)
 	}
@@ -273,6 +292,10 @@ func (n *Node) handleNodeJoined(msg Message) {
 
 	n.AddPeer(&nodeInfo)
 	n.logger.Printf("Node joined: %s (%s:%d)", nodeInfo.ID, nodeInfo.IP, nodeInfo.Port)
+
+	if n.hashRing != nil && nodeInfo.Role == common.RoleStorage {
+		n.hashRing.AddNode(nodeInfo)
+	}
 }
 
 func (n *Node) handleNodeLeft(msg Message) {
@@ -404,6 +427,151 @@ func (n *Node) handleLockAbort(msg Message) {
 
 	for _, resourceID := range resourcesToRelease {
 		n.ReleaseLock(resourceID)
+	}
+}
+
+// TODO: what about very big files?
+func (n *Node) handleFileStore(msg Message) {
+	var fileRequest common.FileStoreRequest
+	if err := json.Unmarshal(msg.Payload, &fileRequest); err != nil {
+		n.logger.Printf("Failed to unmarshal FileStoreRequest payload: %v", err)
+		return
+	}
+
+	r := bytes.NewReader(fileRequest.Data)
+	meta, err := n.storage.SaveFile(fileRequest.FileID, fileRequest.Filename, fileRequest.ContentType, r)
+	if err != nil {
+		n.logger.Printf("Failed to save file %s to storage: %v", fileRequest.Filename, err)
+		return
+	}
+
+	peer, exists := n.GetPeer(msg.From)
+	if !exists {
+		n.logger.Printf("Peer %s not found", msg.From)
+		return
+	}
+
+	fileStoreResponsePayload := common.FileStoreResponse{
+		Hash:   meta.Hash,
+		FileID: meta.FileID,
+	}
+	payload, err := json.Marshal(fileStoreResponsePayload)
+	if err != nil {
+		n.logger.Printf("Failed to marshal fileStoreResponsePayload: %v", err)
+		return
+	}
+
+	ackMsg := Message{
+		Type:    common.MessageFileStoreAck,
+		From:    n.ID,
+		To:      peer.ID,
+		Payload: payload,
+	}
+	go n.SendMessage(peer.IP, peer.Port, ackMsg)
+}
+
+func (n *Node) handleFileStoreAck(msg Message) {
+	var fileResponse common.FileStoreResponse
+	if err := json.Unmarshal(msg.Payload, &fileResponse); err != nil {
+		n.logger.Printf("Failed to unmarshal FileStoreResponse request: %v", err)
+		return
+	}
+
+	n.pendingUploadsMutex.Lock()
+	defer n.pendingUploadsMutex.Unlock()
+	pending, exists := n.pendingUploads[fileResponse.FileID]
+	if !exists {
+		n.logger.Printf("FileID '%s' was not found in pendingUploads", fileResponse.FileID.String())
+		return
+	}
+
+	pending.ReceivedAcks[msg.From] = fileResponse.Hash
+	if len(pending.ReceivedAcks) == len(pending.ExpectedNodes) {
+		var firstHash string
+		for _, firstHash = range pending.ReceivedAcks {
+			break
+		}
+		for _, hash := range pending.ReceivedAcks {
+			if hash != firstHash {
+				n.logger.Print("Hashes of the uploaded files differ!")
+			}
+		}
+
+		delete(n.pendingUploads, fileResponse.FileID)
+		n.logger.Printf("File %s uploaded successfully to %d nodes", pending.Filename, len(pending.ExpectedNodes))
+	}
+}
+
+func (n *Node) handleFileRetrieve(msg Message) {
+	var request common.FileRetrieveRequest
+	if err := json.Unmarshal(msg.Payload, &request); err != nil {
+		n.logger.Printf("failed to unmarshal FileRetrieveRequest payload: %v", err)
+		return
+	}
+	reader, meta, err := n.storage.GetFile(request.Hash)
+	if err != nil {
+		n.logger.Printf("error while getting file with hash '%s': %v", request.Hash, err)
+		// TODO: odeslij wiadomosc z bledem
+		return
+	}
+	defer reader.Close()
+
+	// TODO: what about big files?
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		n.logger.Printf("failed to read file: %v", err)
+		return
+	}
+
+	peer, exists := n.GetPeer(msg.From)
+	if !exists {
+		n.logger.Printf("peer %s does not exist", msg.From)
+		return
+	}
+
+	response := common.FileRetrieveResponse{
+		FileID:   meta.FileID,
+		Filename: meta.Filename,
+		Hash:     meta.Hash,
+		Data:     data,
+	}
+	payload, err := json.Marshal(response)
+	if err != nil {
+		n.logger.Printf("Failed to marshal FileRetrieveResponse: %v", err)
+		return
+	}
+
+	responseMsg := common.Message{
+		Type:    common.MessageFileRetrieveResponse,
+		From:    n.ID,
+		To:      peer.ID,
+		Payload: payload,
+	}
+	go n.SendMessage(peer.IP, peer.Port, responseMsg)
+}
+
+func (n *Node) handleFileRetrieveResponse(msg Message) {
+	var response common.FileRetrieveResponse
+	if err := json.Unmarshal(msg.Payload, &response); err != nil {
+		n.logger.Printf("Failed to unmarshal FileRetrieveResponse: %v", err)
+		return
+	}
+
+	n.logger.Printf("Received file %s (%d bytes)", response.Filename, len(response.Data))
+	// TODO: API HTTP
+}
+
+// TODO: response
+func (n *Node) handleFileDelete(msg Message) {
+	var hash string
+	if err := json.Unmarshal(msg.Payload, &hash); err != nil {
+		n.logger.Printf("failed to unmarshal MessageFileDelete: %v", err)
+		return
+	}
+
+	err := n.storage.DeleteFile(hash)
+	if err != nil {
+		n.logger.Printf("Error while deleting file '%s': %v", hash, err)
 	}
 }
 
@@ -721,6 +889,18 @@ func (n *Node) sendAbort(victim uuid.UUID) {
 	go n.SendMessage(peer.IP, peer.Port, msg)
 }
 
+func (n *Node) initMasterResources() {
+	n.hashRing = hashing.NewHashRing(150)
+	n.pendingUploads = make(map[uuid.UUID]*common.PendingUpload)
+
+	for _, peer := range n.GetAllPeers() {
+		if peer.Role == common.RoleStorage {
+			n.hashRing.AddNode(*peer)
+		}
+	}
+	n.logger.Printf("Initialized master resources with %d storage nodes", n.hashRing.GetNodeCount())
+}
+
 func (n *Node) AddPeer(peer *NodeInfo) {
 	n.peerMutex.Lock()
 	defer n.peerMutex.Unlock()
@@ -773,7 +953,18 @@ func (n *Node) GetRole() NodeRole {
 }
 
 func (n *Node) SetRole(role NodeRole) {
+	oldRole := n.Role
 	n.Role = role
+
+	if role == common.RoleMaster && oldRole != common.RoleMaster {
+		n.initMasterResources()
+	}
+
+	if role != common.RoleMaster && oldRole == common.RoleMaster {
+		n.hashRing = nil
+		n.pendingUploads = nil
+		n.logger.Printf("Cleaned up master resources")
+	}
 }
 
 func (n *Node) GetPeers() []NodeInfo {
@@ -931,4 +1122,48 @@ func (n *Node) EnterCriticalSection(resourceID string) bool {
 	n.BroadcastMessage(msg)
 
 	return true
+}
+
+func (n *Node) StoreFile(fileID uuid.UUID, filename string, contentType string, data []byte) {
+	nodes := n.hashRing.FindNodesForFile(filename, 3)
+
+	expectedNodes := make([]uuid.UUID, len(nodes))
+	for i, node := range nodes {
+		expectedNodes[i] = node.ID
+	}
+
+	pendingUpload := &common.PendingUpload{
+		FileID:        fileID,
+		Filename:      filename,
+		ExpectedNodes: expectedNodes,
+		ReceivedAcks:  make(map[uuid.UUID]string),
+	}
+
+	n.pendingUploadsMutex.Lock()
+	n.pendingUploads[fileID] = pendingUpload
+	n.pendingUploadsMutex.Unlock()
+
+	messageFileStorePayload := common.FileStoreRequest{
+		FileID:      fileID,
+		Filename:    filename,
+		ContentType: contentType,
+		Size:        int64(len(data)),
+		Data:        data,
+	}
+
+	payload, err := json.Marshal(messageFileStorePayload)
+	if err != nil {
+		n.logger.Printf("Failed to marshal messageFileStorePayload: %v", err)
+		return
+	}
+
+	msg := common.Message{
+		Type:    common.MessageFileStore,
+		From:    n.ID,
+		Payload: payload,
+	}
+
+	for _, node := range nodes {
+		go n.SendMessage(node.IP, node.Port, msg)
+	}
 }

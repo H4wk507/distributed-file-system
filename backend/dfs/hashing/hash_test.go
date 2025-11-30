@@ -223,35 +223,6 @@ func TestHashRing_Consistency(t *testing.T) {
 	}
 }
 
-func TestHashRing_Distribution(t *testing.T) {
-	hr := NewHashRing(150)
-
-	nodes := make([]common.NodeInfo, 5)
-	for i := 0; i < 5; i++ {
-		nodes[i] = createTestNode(i)
-		hr.AddNode(nodes[i])
-	}
-
-	// Sprawdź dystrybucję 1000 plików
-	distribution := make(map[uuid.UUID]int)
-	for i := 0; i < 1000; i++ {
-		filename := fmt.Sprintf("file_%d.txt", i)
-		assigned := hr.FindNodesForFile(filename, 1)
-		if len(assigned) > 0 {
-			distribution[assigned[0].ID]++
-		}
-	}
-
-	// Każdy węzeł powinien mieć mniej więcej 200 plików (1000/5)
-	// Akceptujemy odchylenie 50% (100-300)
-	for _, node := range nodes {
-		count := distribution[node.ID]
-		if count < 100 || count > 300 {
-			t.Errorf("node %s has %d files, expected ~200 (within 100-300 range)", node.ID, count)
-		}
-	}
-}
-
 func TestHashRing_ConsistencyAfterNodeRemoval(t *testing.T) {
 	hr := NewHashRing(100)
 

@@ -16,12 +16,21 @@ func contains(slice []uuid.UUID, id uuid.UUID) bool {
 	return false
 }
 
-// Helper function to verify cycle path is valid (first node equals last node)
+// Helper function to verify cycle path is valid
+// A valid cycle path has the last element appearing earlier in the path
+// e.g., [A, B, C, D, B] - B appears at index 1 and at the end
 func isValidCyclePath(path []uuid.UUID) bool {
 	if len(path) < 2 {
 		return false
 	}
-	return path[0] == path[len(path)-1]
+	lastNode := path[len(path)-1]
+	// Check if last node appears earlier in the path (forming a cycle)
+	for i := 0; i < len(path)-1; i++ {
+		if path[i] == lastNode {
+			return true
+		}
+	}
+	return false
 }
 
 // Helper function to verify path follows graph edges
@@ -285,9 +294,9 @@ func TestHasCycle_ComplexGraphWithCycle(t *testing.T) {
 	}
 
 	// The cycle is B -> C -> D -> B, so path could be [A, B, C, D, B] or similar
-	// First and last should be the same (cycle closes)
+	// The last element should appear earlier in the path (cycle detected)
 	if !isValidCyclePath(path) {
-		t.Errorf("expected path to form a valid cycle (first == last), got %v", path)
+		t.Errorf("expected path to form a valid cycle (last node appears earlier), got %v", path)
 	}
 
 	// Path should contain B, C, D (the cycle nodes)

@@ -1159,3 +1159,300 @@ func TestSendAbort_UnknownPeer(t *testing.T) {
 	// Should not panic when peer is not found
 	node.sendAbort(unknownPeerID)
 }
+
+// ============== FILE STORAGE TESTS ==============
+
+/* Test SetRole initializes master resources when becoming master */
+func TestSetRole_BecomeMaster(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9970, common.RoleStorage, 1)
+
+	// Initially storage node - no hashRing
+	if node.hashRing != nil {
+		t.Error("storage node should not have hashRing")
+	}
+	if node.pendingUploads != nil {
+		t.Error("storage node should not have pendingUploads")
+	}
+
+	// Become master
+	node.SetRole(common.RoleMaster)
+
+	// Should have master resources
+	if node.hashRing == nil {
+		t.Error("master node should have hashRing after SetRole")
+	}
+	if node.pendingUploads == nil {
+		t.Error("master node should have pendingUploads after SetRole")
+	}
+}
+
+/* Test SetRole cleans up master resources when becoming storage */
+func TestSetRole_BecomeStorage(t *testing.T) {
+	// Create as storage first, then become master, then back to storage
+	node := CreateNodeWithBully("127.0.0.1", 9969, common.RoleStorage, 1)
+
+	// Become master first
+	node.SetRole(common.RoleMaster)
+
+	if node.hashRing == nil {
+		t.Fatal("master should have hashRing")
+	}
+
+	// Become storage (demotion)
+	node.SetRole(common.RoleStorage)
+
+	// Resources should be cleaned up
+	if node.hashRing != nil {
+		t.Error("storage node should not have hashRing after demotion")
+	}
+	if node.pendingUploads != nil {
+		t.Error("storage node should not have pendingUploads after demotion")
+	}
+}
+
+/* Test SetRole adds existing storage peers to hashRing */
+func TestSetRole_AddsExistingPeersToHashRing(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9968, common.RoleStorage, 1)
+
+	// Add some storage peers before becoming master
+	storagePeer1 := &common.NodeInfo{
+		ID:       uuid.New(),
+		IP:       "10.0.0.1",
+		Port:     8001,
+		Role:     common.RoleStorage,
+		Status:   common.StatusOnline,
+		Priority: 2,
+	}
+	storagePeer2 := &common.NodeInfo{
+		ID:       uuid.New(),
+		IP:       "10.0.0.2",
+		Port:     8002,
+		Role:     common.RoleStorage,
+		Status:   common.StatusOnline,
+		Priority: 3,
+	}
+	masterPeer := &common.NodeInfo{
+		ID:       uuid.New(),
+		IP:       "10.0.0.3",
+		Port:     8003,
+		Role:     common.RoleMaster,
+		Status:   common.StatusOnline,
+		Priority: 10,
+	}
+
+	node.AddPeer(storagePeer1)
+	node.AddPeer(storagePeer2)
+	node.AddPeer(masterPeer)
+
+	// Become master
+	node.SetRole(common.RoleMaster)
+
+	// Should have 2 storage nodes in hashRing (not the master peer)
+	if node.hashRing.GetNodeCount() != 2 {
+		t.Errorf("expected 2 storage nodes in hashRing, got %d", node.hashRing.GetNodeCount())
+	}
+}
+
+/* Test handleNodeJoined adds storage node to hashRing */
+func TestHandleNodeJoined_AddsToHashRing(t *testing.T) {
+	// Create as storage, then become master to properly init hashRing
+	node := CreateNodeWithBully("127.0.0.1", 9967, common.RoleStorage, 10)
+	node.SetRole(common.RoleMaster) // init hashRing
+
+	initialCount := node.hashRing.GetNodeCount()
+
+	// Simulate node joined message
+	newStorageNode := common.NodeInfo{
+		ID:       uuid.New(),
+		IP:       "10.0.0.5",
+		Port:     8005,
+		Role:     common.RoleStorage,
+		Status:   common.StatusOnline,
+		Priority: 5,
+	}
+	payload, _ := json.Marshal(newStorageNode)
+
+	msg := common.Message{
+		Type:    common.MessageNodeJoined,
+		From:    newStorageNode.ID,
+		Payload: payload,
+	}
+
+	node.handleNodeJoined(msg)
+
+	// Should be added to hashRing
+	if node.hashRing.GetNodeCount() != initialCount+1 {
+		t.Errorf("expected hashRing to have %d nodes, got %d", initialCount+1, node.hashRing.GetNodeCount())
+	}
+}
+
+/* Test handleFileStoreAck tracks ACKs correctly */
+func TestHandleFileStoreAck_TracksAcks(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9966, common.RoleStorage, 10)
+	node.SetRole(common.RoleMaster)
+
+	fileID := uuid.New()
+	storageNode1 := uuid.New()
+	storageNode2 := uuid.New()
+
+	// Setup pending upload
+	node.pendingUploads[fileID] = &common.PendingUpload{
+		FileID:        fileID,
+		Filename:      "test.txt",
+		ExpectedNodes: []uuid.UUID{storageNode1, storageNode2},
+		ReceivedAcks:  make(map[uuid.UUID]string),
+	}
+
+	// First ACK
+	response1 := common.FileStoreResponse{
+		FileID: fileID,
+		Hash:   "abc123",
+	}
+	payload1, _ := json.Marshal(response1)
+	msg1 := common.Message{
+		Type:    common.MessageFileStoreAck,
+		From:    storageNode1,
+		Payload: payload1,
+	}
+	node.handleFileStoreAck(msg1)
+
+	// Should still be pending (waiting for second ACK)
+	node.pendingUploadsMutex.RLock()
+	_, stillPending := node.pendingUploads[fileID]
+	acksCount := len(node.pendingUploads[fileID].ReceivedAcks)
+	node.pendingUploadsMutex.RUnlock()
+
+	if !stillPending {
+		t.Error("upload should still be pending after first ACK")
+	}
+	if acksCount != 1 {
+		t.Errorf("expected 1 ACK, got %d", acksCount)
+	}
+
+	// Second ACK
+	response2 := common.FileStoreResponse{
+		FileID: fileID,
+		Hash:   "abc123",
+	}
+	payload2, _ := json.Marshal(response2)
+	msg2 := common.Message{
+		Type:    common.MessageFileStoreAck,
+		From:    storageNode2,
+		Payload: payload2,
+	}
+	node.handleFileStoreAck(msg2)
+
+	// Should be completed and removed
+	node.pendingUploadsMutex.RLock()
+	_, stillPending = node.pendingUploads[fileID]
+	node.pendingUploadsMutex.RUnlock()
+
+	if stillPending {
+		t.Error("upload should be completed after all ACKs")
+	}
+}
+
+/* Test handleFileStoreAck detects hash mismatch */
+func TestHandleFileStoreAck_DetectsHashMismatch(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9965, common.RoleStorage, 10)
+	node.SetRole(common.RoleMaster)
+
+	fileID := uuid.New()
+	storageNode1 := uuid.New()
+	storageNode2 := uuid.New()
+
+	// Setup pending upload
+	node.pendingUploads[fileID] = &common.PendingUpload{
+		FileID:        fileID,
+		Filename:      "test.txt",
+		ExpectedNodes: []uuid.UUID{storageNode1, storageNode2},
+		ReceivedAcks:  make(map[uuid.UUID]string),
+	}
+
+	// First ACK with hash "abc"
+	response1 := common.FileStoreResponse{FileID: fileID, Hash: "abc"}
+	payload1, _ := json.Marshal(response1)
+	node.handleFileStoreAck(common.Message{Type: common.MessageFileStoreAck, From: storageNode1, Payload: payload1})
+
+	// Second ACK with different hash "xyz" - should log warning but still complete
+	response2 := common.FileStoreResponse{FileID: fileID, Hash: "xyz"}
+	payload2, _ := json.Marshal(response2)
+	node.handleFileStoreAck(common.Message{Type: common.MessageFileStoreAck, From: storageNode2, Payload: payload2})
+
+	// Should be completed (removed from pending) even with mismatch
+	node.pendingUploadsMutex.RLock()
+	_, stillPending := node.pendingUploads[fileID]
+	node.pendingUploadsMutex.RUnlock()
+
+	if stillPending {
+		t.Error("upload should be completed even with hash mismatch")
+	}
+}
+
+/* Test handleFileStoreAck ignores unknown FileID */
+func TestHandleFileStoreAck_IgnoresUnknownFileID(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9964, common.RoleStorage, 10)
+	node.SetRole(common.RoleMaster)
+
+	// Don't setup any pending upload
+	unknownFileID := uuid.New()
+
+	response := common.FileStoreResponse{FileID: unknownFileID, Hash: "abc"}
+	payload, _ := json.Marshal(response)
+	msg := common.Message{
+		Type:    common.MessageFileStoreAck,
+		From:    uuid.New(),
+		Payload: payload,
+	}
+
+	// Should not panic
+	node.handleFileStoreAck(msg)
+}
+
+/* Test StoreFile creates pending upload and selects nodes */
+func TestStoreFile_CreatesPendingUpload(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9963, common.RoleStorage, 10)
+	node.SetRole(common.RoleMaster)
+
+	// Add some storage nodes to hashRing
+	for i := 0; i < 5; i++ {
+		storageNode := common.NodeInfo{
+			ID:       uuid.New(),
+			IP:       "10.0.0." + string(rune('1'+i)),
+			Port:     8000 + i,
+			Role:     common.RoleStorage,
+			Status:   common.StatusOnline,
+			Priority: i,
+		}
+		node.hashRing.AddNode(storageNode)
+	}
+
+	fileID := uuid.New()
+	filename := "test-file.txt"
+	data := []byte("test content")
+
+	// Call StoreFile (will try to send messages but fail - no actual network)
+	node.StoreFile(fileID, filename, "text/plain", data)
+
+	// Check pending upload was created
+	node.pendingUploadsMutex.RLock()
+	pending, exists := node.pendingUploads[fileID]
+	node.pendingUploadsMutex.RUnlock()
+
+	if !exists {
+		t.Fatal("pending upload should be created")
+	}
+
+	if pending.FileID != fileID {
+		t.Errorf("expected FileID %s, got %s", fileID, pending.FileID)
+	}
+	if pending.Filename != filename {
+		t.Errorf("expected Filename %s, got %s", filename, pending.Filename)
+	}
+	if len(pending.ExpectedNodes) != 3 {
+		t.Errorf("expected 3 expected nodes, got %d", len(pending.ExpectedNodes))
+	}
+	if pending.ReceivedAcks == nil {
+		t.Error("ReceivedAcks should be initialized")
+	}
+}
