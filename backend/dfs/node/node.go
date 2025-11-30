@@ -5,6 +5,7 @@ import (
 	"dfs-backend/dfs/common"
 	. "dfs-backend/dfs/common"
 	"dfs-backend/dfs/election"
+	"dfs-backend/dfs/storage"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -26,7 +27,7 @@ type Node struct {
 
 	elector election.Elector
 
-	Peers     map[uuid.UUID]*NodeInfo
+	peers     map[uuid.UUID]*NodeInfo
 	peerMutex sync.RWMutex
 
 	listener net.Listener
@@ -45,6 +46,8 @@ type Node struct {
 	waitForGraph      map[uuid.UUID]map[uuid.UUID]bool // key = NodeID that waits, value = map of NodeIDs for which key waits
 	waitForGraphMutex sync.RWMutex
 
+	storage *storage.LocalStorage
+
 	logger *log.Logger
 }
 
@@ -56,7 +59,7 @@ func CreateNodeWithBully(ip string, port int, role NodeRole, priority int) *Node
 		Role:         role,
 		Status:       StatusStarting,
 		Priority:     priority,
-		Peers:        make(map[uuid.UUID]*NodeInfo),
+		peers:        make(map[uuid.UUID]*NodeInfo),
 		messageChan:  make(chan common.Message, 100),
 		stopChan:     make(chan struct{}),
 		logicalTime:  0,
@@ -67,6 +70,7 @@ func CreateNodeWithBully(ip string, port int, role NodeRole, priority int) *Node
 		logger:       log.New(log.Writer(), fmt.Sprintf("[Node %s] ", role), log.LstdFlags),
 	}
 
+	n.storage = storage.NewLocalStorage(fmt.Sprintf("./data/node-%s", n.ID))
 	n.elector = election.NewBullyElector(n)
 
 	return n
@@ -80,6 +84,7 @@ func (n *Node) Start(ctx context.Context) error {
 	}
 	n.listener = listener
 	n.Status = StatusOnline
+	n.storage.LoadIndex()
 	n.logger.Printf("Node started on %s (ID: %s, Priority: %d)", addr, n.ID, n.Priority)
 
 	go n.acceptConnections(ctx)
@@ -212,12 +217,12 @@ func (n *Node) handleHeartbeat(msg Message) {
 	n.peerMutex.Lock()
 	defer n.peerMutex.Unlock()
 
-	if peer, exists := n.Peers[msg.From]; exists {
+	if peer, exists := n.peers[msg.From]; exists {
 		peer.LastHeartbeat = time.Now()
 		peer.Status = nodeInfo.Status
 	} else {
 		nodeInfo.LastHeartbeat = time.Now()
-		n.Peers[msg.From] = &nodeInfo
+		n.peers[msg.From] = &nodeInfo
 		n.logger.Printf("New peer discovered: %s (%s:%d)", msg.From, nodeInfo.IP, nodeInfo.Port)
 	}
 }
@@ -228,8 +233,8 @@ func (n *Node) handleDiscovery(msg Message) {
 
 func (n *Node) handleDiscoveryWithConnection(msg common.Message, conn net.Conn) {
 	n.peerMutex.RLock()
-	peers := make([]*NodeInfo, 0, len(n.Peers))
-	for _, peer := range n.Peers {
+	peers := make([]*NodeInfo, 0, len(n.peers))
+	for _, peer := range n.peers {
 		peers = append(peers, peer)
 	}
 	n.peerMutex.RUnlock()
@@ -302,7 +307,7 @@ func (n *Node) handleLockRequest(msg Message) {
 	n.lockQueueMutex.Unlock()
 
 	n.peerMutex.RLock()
-	p, exists := n.Peers[msg.From]
+	p, exists := n.peers[msg.From]
 	n.peerMutex.RUnlock()
 	if !exists {
 		n.logger.Printf("Unknown peer: %s", msg.From)
@@ -333,7 +338,7 @@ func (n *Node) handleLockAck(msg Message) {
 	}
 	n.pendingAcks[resourceID][msg.From] = true
 
-	n.logger.Printf("Received ack for %s from %s (total: %d/%d)", resourceID, msg.From, len(n.pendingAcks[resourceID]), len(n.Peers))
+	n.logger.Printf("Received ack for %s from %s (total: %d/%d)", resourceID, msg.From, len(n.pendingAcks[resourceID]), len(n.peers))
 }
 
 func (n *Node) handleLockAcquired(msg Message) {
@@ -433,8 +438,8 @@ func (n *Node) sendHeartbeat() {
 	}
 
 	n.peerMutex.RLock()
-	peers := make([]*NodeInfo, 0, len(n.Peers))
-	for _, peer := range n.Peers {
+	peers := make([]*NodeInfo, 0, len(n.peers))
+	for _, peer := range n.peers {
 		peers = append(peers, peer)
 	}
 	n.peerMutex.RUnlock()
@@ -497,14 +502,14 @@ func (n *Node) checkPeersHealth() {
 	defer n.peerMutex.Unlock()
 
 	now := time.Now()
-	for id, peer := range n.Peers {
+	for id, peer := range n.peers {
 		if now.Sub(peer.LastHeartbeat) > 15*time.Second {
 			n.logger.Printf("Peer timeout: %s (%s:%d)", id, peer.IP, peer.Port)
 			if peer.Role == RoleMaster {
 				n.logger.Printf("Coordinator %s is unresponsive, notifying elector", id)
 				n.elector.NotifyCoordinatorDead(id)
 			}
-			delete(n.Peers, id)
+			delete(n.peers, id)
 		}
 	}
 }
@@ -595,8 +600,8 @@ func (n *Node) SendMessage(ip string, port int, msg common.Message) error {
 
 func (n *Node) BroadcastMessage(msg common.Message) error {
 	n.peerMutex.RLock()
-	peers := make([]*NodeInfo, 0, len(n.Peers))
-	for _, peer := range n.Peers {
+	peers := make([]*NodeInfo, 0, len(n.peers))
+	for _, peer := range n.peers {
 		peers = append(peers, peer)
 	}
 	n.peerMutex.RUnlock()
@@ -721,14 +726,14 @@ func (n *Node) AddPeer(peer *NodeInfo) {
 	defer n.peerMutex.Unlock()
 
 	peer.LastHeartbeat = time.Now()
-	n.Peers[peer.ID] = peer
+	n.peers[peer.ID] = peer
 }
 
 func (n *Node) GetPeer(peerID uuid.UUID) (*NodeInfo, bool) {
 	n.peerMutex.RLock()
 	defer n.peerMutex.RUnlock()
 
-	peer, exists := n.Peers[peerID]
+	peer, exists := n.peers[peerID]
 	return peer, exists
 }
 
@@ -736,8 +741,8 @@ func (n *Node) GetAllPeers() []*NodeInfo {
 	n.peerMutex.RLock()
 	defer n.peerMutex.RUnlock()
 
-	peers := make([]*NodeInfo, 0, len(n.Peers))
-	for _, peer := range n.Peers {
+	peers := make([]*NodeInfo, 0, len(n.peers))
+	for _, peer := range n.peers {
 		peers = append(peers, peer)
 	}
 	return peers
@@ -775,8 +780,8 @@ func (n *Node) GetPeers() []NodeInfo {
 	n.peerMutex.RLock()
 	defer n.peerMutex.RUnlock()
 
-	peers := make([]NodeInfo, 0, len(n.Peers))
-	for _, peer := range n.Peers {
+	peers := make([]NodeInfo, 0, len(n.peers))
+	for _, peer := range n.peers {
 		peers = append(peers, *peer)
 	}
 	return peers
@@ -786,7 +791,7 @@ func (n *Node) UpdatePeerRole(peerID uuid.UUID, role NodeRole) {
 	n.peerMutex.Lock()
 	defer n.peerMutex.Unlock()
 
-	if peer, exists := n.Peers[peerID]; exists {
+	if peer, exists := n.peers[peerID]; exists {
 		peer.Role = role
 	}
 }
@@ -794,7 +799,7 @@ func (n *Node) UpdatePeerRole(peerID uuid.UUID, role NodeRole) {
 func (n *Node) RemovePeer(peerID uuid.UUID) {
 	n.peerMutex.Lock()
 	defer n.peerMutex.Unlock()
-	delete(n.Peers, peerID)
+	delete(n.peers, peerID)
 }
 
 func (n *Node) GetMessageChan() <-chan Message {
@@ -895,7 +900,7 @@ func (n *Node) CanEnterCriticalSection(resourceID string) bool {
 	}
 
 	n.peerMutex.RLock()
-	expectedAcks := len(n.Peers)
+	expectedAcks := len(n.peers)
 	n.peerMutex.RUnlock()
 
 	if expectedAcks == 0 {
