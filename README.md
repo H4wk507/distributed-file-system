@@ -116,7 +116,7 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 1. System metadanych
 
-- Zaimplementować klasę FileMetadata z polami: filename, size, hash, timestamps, owner
+- [x] Zaimplementować klasę FileMetadata z polami: filename, size, hash, timestamps, owner
 - Dodać pole replicas - lista węzłów przechowujących plik
 - Dodać pole shards dla partycjonowanych plików
 - Zaimplementować globalną bazę metadanych na masterze (SQLite lub in-memory)
@@ -131,27 +131,27 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 3. Lokalne przechowywanie
 
-- Zaimplementować katalog storage dla każdego węzła
-- Zaimplementować zapisywanie plików jako {hash}.dat
+- [x] Zaimplementować katalog storage dla każdego węzła
+- [x] Zaimplementować zapisywanie plików jako {hash}.dat
 - Zaimplementować zapisywanie metadanych obok pliku (.metadata.json)
-- Zaimplementować indeks lokalny: dict {filename: hash}
-- Zaimplementować odczyt plików przy starcie węzła i budowanie indeksu
+- [x] Zaimplementować indeks lokalny: dict {filename: hash}
+- [x] Zaimplementować odczyt plików przy starcie węzła i budowanie indeksu
 
 ### REPLIKACJA DANYCH
 
 1. Upload pliku
 
-- Zaimplementować przyjmowanie pliku przez mastera
+- [x] Zaimplementować przyjmowanie pliku przez mastera
 - Zaimplementować obliczanie hash i sprawdzanie duplikacji
-- Zaimplementować wybór N węzłów storage przez consistent hashing
-- Zaimplementować wysyłanie pliku równolegle do wszystkich węzłów
-- Zaimplementować zbieranie ACK i zapisywanie metadanych
-- Zaimplementować wybór náhradního węzła przy braku odpowiedzi
+- [x] Zaimplementować wybór N węzłów storage przez consistent hashing
+- [x] Zaimplementować wysyłanie pliku równolegle do wszystkich węzłów
+- [x] Zaimplementować zbieranie ACK i zapisywanie metadanych
+- Zaimplementować wybór następnego węzła przy braku odpowiedzi
 
 2. Download pliku
 
-- Zaimplementować request do mastera z nazwą pliku
-- Zaimplementować lookup metadanych - który węzeł ma plik
+- [x] Zaimplementować request do mastera z nazwą pliku
+- [x] Zaimplementować lookup metadanych - który węzeł ma plik
 - Zaimplementować wybór najbliższego/najmniej obciążonego węzła
 - Zaimplementować przekazanie adresu węzła klientowi
 - Zaimplementować bezpośredni download klient->storage
@@ -174,10 +174,10 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 1. Podstawowe endpointy REST
 
-- Zaimplementować POST /files/upload - multipart upload
+- [x] Zaimplementować POST /files/upload - multipart upload
 - Zaimplementować GET /files/{filename} - stream download
 - Zaimplementować GET /files/ - lista plików z paginacją
-- Zaimplementować DELETE /files/{filename}
+- [x] Zaimplementować DELETE /files/{filename}
 - Zaimplementować GET /files/{filename}/metadata
 - Zaimplementować GET /nodes/ - lista węzłów
 - Zaimplementować GET /nodes/{node_id} - szczegóły węzła

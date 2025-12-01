@@ -39,16 +39,16 @@ func (s *LocalStorage) SaveFile(fileID uuid.UUID, filename string, contentType s
 		return nil, err
 	}
 
-	hash := sha256.New()
+	contentHash := sha256.New()
 	buf := make([]byte, 1*1024*1024) // 1MB
-	size, err := io.CopyBuffer(io.MultiWriter(f, hash), data, buf)
+	size, err := io.CopyBuffer(io.MultiWriter(f, contentHash), data, buf)
 	f.Close()
 	if err != nil {
 		return nil, err
 	}
 
-	hashStr := hex.EncodeToString(hash.Sum(nil))
-	finalPath := s.filePath(hashStr)
+	contentHashStr := hex.EncodeToString(contentHash.Sum(nil))
+	finalPath := s.filePath(contentHashStr)
 
 	if err := os.MkdirAll(filepath.Dir(finalPath), 0755); err != nil {
 		return nil, err
@@ -60,7 +60,7 @@ func (s *LocalStorage) SaveFile(fileID uuid.UUID, filename string, contentType s
 	metadata := FileMetadata{
 		FileID:      fileID,
 		Filename:    filename,
-		Hash:        hashStr,
+		Hash:        contentHashStr,
 		Size:        size,
 		ContentType: contentType,
 		StoredAt:    time.Now(),
@@ -68,7 +68,7 @@ func (s *LocalStorage) SaveFile(fileID uuid.UUID, filename string, contentType s
 	}
 
 	s.mutex.Lock()
-	s.index[hashStr] = metadata
+	s.index[contentHashStr] = metadata
 	s.mutex.Unlock()
 
 	if err := s.SaveIndex(); err != nil {
@@ -137,6 +137,17 @@ func (s *LocalStorage) SaveIndex() error {
 		return err
 	}
 	return os.Rename(tmpPath, s.indexPath())
+}
+
+func (s *LocalStorage) GetAllMetadata() []FileMetadata {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	result := make([]FileMetadata, 0, len(s.index))
+	for _, meta := range s.index {
+		result = append(result, meta)
+	}
+	return result
 }
 
 func (s *LocalStorage) filePath(hash string) string {

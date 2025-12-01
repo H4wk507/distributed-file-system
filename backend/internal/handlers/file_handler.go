@@ -1,11 +1,14 @@
 package handlers
 
 import (
+	"crypto/sha256"
 	"dfs-backend/dfs/node"
 	"dfs-backend/internal/database"
 	"dfs-backend/internal/dto"
+	"dfs-backend/internal/models"
 	"dfs-backend/internal/services"
 	"dfs-backend/utils/response"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -59,6 +62,23 @@ func (h *FileHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		contentType = "application/octet-stream"
 	}
 
+	contentHash := sha256.Sum256(data)
+	contentHashStr := hex.EncodeToString(contentHash[:])
+
+	fileModel := &models.File{
+		ID:          fileID,
+		Name:        header.Filename,
+		Size:        header.Size,
+		Hash:        contentHashStr,
+		ContentType: contentType,
+		OwnerID:     uuid.Nil, // TODO:
+	}
+
+	if err := h.service.CreateFile(fileModel); err != nil {
+		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save file metadata: %v", err))
+		return
+	}
+
 	h.node.StoreFile(fileID, header.Filename, contentType, data)
 
 	// TODO: streaming response?
@@ -81,26 +101,32 @@ func (h *FileHandler) GetFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: move to unique identifier from DB, fileID, and also on hashring
+
 	filename := r.PathValue("filename")
 	if filename == "" {
 		response.Error(w, http.StatusBadRequest, "'filename' not present in path")
 		return
 	}
 
-	// TODO: it should be based on hash, filename could be duplicated
-	_, err := h.node.RetrieveFile(filename)
+	hash, err := h.service.GetFileHashByName(filename)
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "File not found")
+		return
+	}
+
+	fileResponse, err := h.node.RetrieveFile(filename, hash)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to retrieve file: %v", err))
 		return
 	}
 
-	// TODO: move to response.go?
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", fileResponse.Filename))
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", 0))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(fileResponse.Data)))
 
 	w.WriteHeader(http.StatusOK)
-	w.Write() // data
+	w.Write(fileResponse.Data)
 }
 
 func (h *FileHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
@@ -109,18 +135,26 @@ func (h *FileHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: move to unique identifier from DB, fileID, and also on hashring
+
 	filename := r.PathValue("filename")
 	if filename == "" {
 		response.Error(w, http.StatusBadRequest, "'filename' not present in path")
 		return
 	}
 
-	// TODO: it should be based on hash, filename could be duplicated
-	err := h.node.DeleteFile(filename)
+	hash, err := h.service.GetFileHashByName(filename)
 	if err != nil {
-		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to delete file: %v", err))
+		response.Error(w, http.StatusNotFound, "File not found")
 		return
 	}
+
+	if err := h.service.DeleteFileByName(filename); err != nil {
+		response.Error(w, http.StatusInternalServerError, "Failed to delete file from database")
+		return
+	}
+
+	h.node.DeleteFile(filename, hash)
 
 	response.JSON(w, http.StatusOK, response.SuccessResponse{
 		Success: true,

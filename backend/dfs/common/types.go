@@ -55,6 +55,10 @@ const (
 	MessageFileRetrieve         MessageType = "file_retrieve"
 	MessageFileRetrieveResponse MessageType = "file_retrieve_response"
 	MessageFileDelete           MessageType = "file_delete"
+
+	MessageMetadataRequest  MessageType = "metadata_request"
+	MessageMetadataResponse MessageType = "metadata_response"
+	MessageReplicateFile    MessageType = "replicate_file"
 )
 
 type Message struct {
@@ -119,12 +123,50 @@ type FileStoreResponse struct {
 }
 
 type FileRetrieveRequest struct {
-	Hash string `json:"hash"`
+	RequestID string `json:"request_id"`
+	Hash      string `json:"hash"`
 }
 
 type FileRetrieveResponse struct {
-	FileID   uuid.UUID `json:"file_id"`
-	Filename string    `json:"filename"`
-	Hash     string    `json:"hash"`
-	Data     []byte    `json:"data"`
+	RequestID string    `json:"request_id"`
+	FileID    uuid.UUID `json:"file_id"`
+	Filename  string    `json:"filename"`
+	Hash      string    `json:"hash"`
+	Data      []byte    `json:"data"`
+	Error     string    `json:"error,omitempty"`
+}
+
+type GlobalFileInfo struct {
+	FileId      uuid.UUID
+	Filename    string
+	Hash        string
+	Size        int64 // in bytes
+	ContentType string
+	Replicas    []uuid.UUID
+}
+
+type MetadataRequest struct {
+	RequestID string `json:"request_id"`
+}
+
+type NodeFileMetadata struct {
+	FileID      uuid.UUID `json:"file_id"`
+	Filename    string    `json:"filename"`
+	Hash        string    `json:"hash"`
+	Size        int64     `json:"size"` // in bytes
+	ContentType string    `json:"content_type"`
+}
+
+type MetadataResponse struct {
+	RequestID string             `json:"request_id"`
+	NodeID    uuid.UUID          `json:"node_id"`
+	Files     []NodeFileMetadata `json:"files"`
+}
+
+type ReplicateFileRequest struct {
+	FileID      uuid.UUID   `json:"file_id"`
+	Filename    string      `json:"filename"`
+	Hash        string      `json:"hash"`
+	SourceNode  uuid.UUID   `json:"source_node"`
+	TargetNodes []uuid.UUID `json:"target_nodes"`
 }
