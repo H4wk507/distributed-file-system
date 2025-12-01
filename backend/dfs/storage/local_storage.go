@@ -28,6 +28,9 @@ func NewLocalStorage(basePath string) *LocalStorage {
 }
 
 func (s *LocalStorage) SaveFile(fileID uuid.UUID, filename string, contentType string, data io.Reader) (*FileMetadata, error) {
+	if err := os.MkdirAll(s.basePath, 0755); err != nil {
+		return nil, err
+	}
 	tmpPath := filepath.Join(s.basePath, fmt.Sprintf("temp-%d", time.Now().UnixNano()))
 	defer os.Remove(tmpPath)
 

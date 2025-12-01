@@ -26,6 +26,7 @@ dist-ssr
 main
 
 backend/bin/
+backend/data/**
 go.work
 
 *.aux

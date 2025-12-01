@@ -64,7 +64,6 @@ func CreateNodeWithBully(ip string, port int, role NodeRole, priority int) *Node
 		ID:           uuid.New(),
 		IP:           ip,
 		Port:         port,
-		Role:         role,
 		Status:       StatusStarting,
 		Priority:     priority,
 		peers:        make(map[uuid.UUID]*NodeInfo),
@@ -80,6 +79,8 @@ func CreateNodeWithBully(ip string, port int, role NodeRole, priority int) *Node
 
 	n.storage = storage.NewLocalStorage(fmt.Sprintf("./data/node-%s", n.ID))
 	n.elector = election.NewBullyElector(n)
+
+	n.SetRole(role)
 
 	return n
 }
@@ -997,6 +998,14 @@ func (n *Node) GetMessageChan() <-chan Message {
 	return n.messageChan
 }
 
+func (n *Node) RegisterStorageNode(nodeInfo *NodeInfo) {
+	n.AddPeer(nodeInfo)
+	if n.hashRing != nil && nodeInfo.Role == common.RoleStorage {
+		n.hashRing.AddNode(*nodeInfo)
+		n.logger.Printf("Added storage node to ring: %s", nodeInfo.ID)
+	}
+}
+
 func (n *Node) IncrementAndGetLogicalTime() int {
 	n.logicalTimeMutex.Lock()
 	defer n.logicalTimeMutex.Unlock()
@@ -1166,4 +1175,14 @@ func (n *Node) StoreFile(fileID uuid.UUID, filename string, contentType string, 
 	for _, node := range nodes {
 		go n.SendMessage(node.IP, node.Port, msg)
 	}
+}
+
+func (n *Node) RetrieveFile(filename string) (string, error) {
+	// TODO:
+	return "", nil
+}
+
+func (n *Node) DeleteFile(filename string) error {
+	// TODO:
+	return nil
 }
