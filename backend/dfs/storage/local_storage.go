@@ -67,6 +67,17 @@ func (s *LocalStorage) SaveFile(fileID uuid.UUID, filename string, contentType s
 		Status:      "complete",
 	}
 
+	metadataFilePath := s.metadataFilePath(contentHashStr)
+
+	metadataJson, err := json.Marshal(metadata)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	if err := os.WriteFile(metadataFilePath, metadataJson, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write metadata file: %w", err)
+	}
+
 	s.mutex.Lock()
 	s.index[contentHashStr] = metadata
 	s.mutex.Unlock()
@@ -81,6 +92,12 @@ func (s *LocalStorage) DeleteFile(hash string) error {
 	path := s.filePath(hash)
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete file: %w", err)
+	}
+
+	metadataFilePath := fmt.Sprintf("%s.metadata.json", hash)
+
+	if err := os.Remove(metadataFilePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to delete metadata file: %w", err)
 	}
 
 	s.mutex.Lock()
@@ -152,6 +169,10 @@ func (s *LocalStorage) GetAllMetadata() []FileMetadata {
 
 func (s *LocalStorage) filePath(hash string) string {
 	return filepath.Join(s.basePath, "data", hash[:2], fmt.Sprintf("%s.dat", hash))
+}
+
+func (s *LocalStorage) metadataFilePath(hash string) string {
+	return filepath.Join(s.basePath, "data", hash[:2], fmt.Sprintf("%s.metadata.json", hash))
 }
 
 func (s *LocalStorage) indexPath() string {

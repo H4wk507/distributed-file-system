@@ -2,7 +2,9 @@ package storage
 
 import (
 	"bytes"
+	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"testing"
@@ -74,6 +76,13 @@ func TestSaveFile(t *testing.T) {
 	filePath := storage.filePath(meta.Hash)
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		t.Error("file should exist on disk")
+	}
+
+	// Check if metadata file exists on disk
+	metadataFilePath := storage.metadataFilePath(meta.Hash)
+	log.Print(metadataFilePath)
+	if _, err := os.Stat(metadataFilePath); os.IsNotExist(err) {
+		t.Error("metadata file should exist on disk")
 	}
 
 	// Check file is in index
@@ -153,6 +162,12 @@ func TestDeleteFile(t *testing.T) {
 	// Verify file is gone from disk
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
 		t.Error("file should not exist after delete")
+	}
+
+	// Verify metadata file is gone from disk
+	metadataFilePath := storage.filePath(fmt.Sprintf("%s.metadata.json", meta.Hash))
+	if _, err := os.Stat(metadataFilePath); !os.IsNotExist(err) {
+		t.Error("metadata file should not exist on disk")
 	}
 
 	// Verify file is gone from index
