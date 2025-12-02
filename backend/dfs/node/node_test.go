@@ -2,7 +2,9 @@ package node
 
 import (
 	"dfs-backend/dfs/common"
+	"dfs-backend/dfs/storage"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -1454,5 +1456,420 @@ func TestStoreFile_CreatesPendingUpload(t *testing.T) {
 	}
 	if pending.ReceivedAcks == nil {
 		t.Error("ReceivedAcks should be initialized")
+	}
+}
+
+// ============== METADATA SYNC TESTS ==============
+
+/* Test handleMetadataRequest returns local file metadata */
+func TestHandleMetadataRequest_ReturnsLocalFiles(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9960, common.RoleStorage, 1)
+
+	// Add a peer (master) that will receive the response
+	masterID := uuid.New()
+	node.AddPeer(&common.NodeInfo{
+		ID:            masterID,
+		IP:            "127.0.0.1",
+		Port:          8000,
+		Role:          common.RoleMaster,
+		Status:        common.StatusOnline,
+		Priority:      10,
+		LastHeartbeat: time.Now(),
+	})
+
+	// Note: We can't easily test the full flow without network,
+	// but we can verify the handler doesn't panic and processes correctly
+	request := common.MetadataRequest{RequestID: "test-123"}
+	payload, _ := json.Marshal(request)
+
+	msg := common.Message{
+		Type:    common.MessageMetadataRequest,
+		From:    masterID,
+		Payload: payload,
+	}
+
+	// Should not panic even though we can't send the response
+	node.handleMetadataRequest(msg)
+}
+
+/* Test handleMetadataResponse updates globalFileIndex (master only) */
+func TestHandleMetadataResponse_UpdatesGlobalIndex(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9959, common.RoleStorage, 10)
+	node.SetRole(common.RoleMaster) // init master resources
+
+	storageNodeID := uuid.New()
+	fileHash := "abc123def456"
+
+	response := common.MetadataResponse{
+		RequestID: "test-123",
+		NodeID:    storageNodeID,
+		Files: []common.NodeFileMetadata{
+			{
+				FileID:      uuid.New(),
+				Filename:    "test.txt",
+				Hash:        fileHash,
+				Size:        1024,
+				ContentType: "text/plain",
+			},
+		},
+	}
+	payload, _ := json.Marshal(response)
+
+	msg := common.Message{
+		Type:    common.MessageMetadataResponse,
+		From:    storageNodeID,
+		Payload: payload,
+	}
+
+	node.handleMetadataResponse(msg)
+
+	// Verify file was added to globalFileIndex
+	node.globalFileIndexMutex.RLock()
+	fileInfo, exists := node.globalFileIndex[fileHash]
+	node.globalFileIndexMutex.RUnlock()
+
+	if !exists {
+		t.Fatal("expected file to be in globalFileIndex")
+	}
+
+	if len(fileInfo.Replicas) != 1 {
+		t.Errorf("expected 1 replica, got %d", len(fileInfo.Replicas))
+	}
+
+	if fileInfo.Replicas[0] != storageNodeID {
+		t.Errorf("expected replica to be %s, got %s", storageNodeID, fileInfo.Replicas[0])
+	}
+}
+
+/* Test handleMetadataResponse merges replicas for same file */
+func TestHandleMetadataResponse_MergesReplicas(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9958, common.RoleStorage, 10)
+	node.SetRole(common.RoleMaster)
+
+	storageNode1 := uuid.New()
+	storageNode2 := uuid.New()
+	fileHash := "samehash123"
+	fileID := uuid.New()
+
+	// First response from storageNode1
+	response1 := common.MetadataResponse{
+		RequestID: "req-1",
+		NodeID:    storageNode1,
+		Files: []common.NodeFileMetadata{
+			{FileID: fileID, Filename: "shared.txt", Hash: fileHash, Size: 100},
+		},
+	}
+	payload1, _ := json.Marshal(response1)
+	node.handleMetadataResponse(common.Message{
+		Type: common.MessageMetadataResponse, From: storageNode1, Payload: payload1,
+	})
+
+	// Second response from storageNode2 with same file
+	response2 := common.MetadataResponse{
+		RequestID: "req-2",
+		NodeID:    storageNode2,
+		Files: []common.NodeFileMetadata{
+			{FileID: fileID, Filename: "shared.txt", Hash: fileHash, Size: 100},
+		},
+	}
+	payload2, _ := json.Marshal(response2)
+	node.handleMetadataResponse(common.Message{
+		Type: common.MessageMetadataResponse, From: storageNode2, Payload: payload2,
+	})
+
+	// Verify both nodes are in replicas
+	node.globalFileIndexMutex.RLock()
+	fileInfo := node.globalFileIndex[fileHash]
+	node.globalFileIndexMutex.RUnlock()
+
+	if len(fileInfo.Replicas) != 2 {
+		t.Errorf("expected 2 replicas, got %d", len(fileInfo.Replicas))
+	}
+}
+
+/* Test handleMetadataResponse ignores duplicate node in replicas */
+func TestHandleMetadataResponse_IgnoresDuplicateReplica(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9957, common.RoleStorage, 10)
+	node.SetRole(common.RoleMaster)
+
+	storageNodeID := uuid.New()
+	fileHash := "duplicatetest"
+
+	response := common.MetadataResponse{
+		RequestID: "req-1",
+		NodeID:    storageNodeID,
+		Files: []common.NodeFileMetadata{
+			{FileID: uuid.New(), Filename: "file.txt", Hash: fileHash, Size: 100},
+		},
+	}
+	payload, _ := json.Marshal(response)
+
+	// Send same response twice
+	node.handleMetadataResponse(common.Message{
+		Type: common.MessageMetadataResponse, From: storageNodeID, Payload: payload,
+	})
+	node.handleMetadataResponse(common.Message{
+		Type: common.MessageMetadataResponse, From: storageNodeID, Payload: payload,
+	})
+
+	// Should still have only 1 replica
+	node.globalFileIndexMutex.RLock()
+	fileInfo := node.globalFileIndex[fileHash]
+	node.globalFileIndexMutex.RUnlock()
+
+	if len(fileInfo.Replicas) != 1 {
+		t.Errorf("expected 1 replica (no duplicates), got %d", len(fileInfo.Replicas))
+	}
+}
+
+/* Test handleMetadataResponse is ignored by non-master nodes */
+func TestHandleMetadataResponse_IgnoredByNonMaster(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9956, common.RoleStorage, 1)
+	// Don't set as master - stays as storage
+
+	response := common.MetadataResponse{
+		RequestID: "req-1",
+		NodeID:    uuid.New(),
+		Files: []common.NodeFileMetadata{
+			{FileID: uuid.New(), Filename: "file.txt", Hash: "somehash", Size: 100},
+		},
+	}
+	payload, _ := json.Marshal(response)
+
+	node.handleMetadataResponse(common.Message{
+		Type: common.MessageMetadataResponse, From: uuid.New(), Payload: payload,
+	})
+
+	// globalFileIndex should be nil (not initialized for storage nodes)
+	if node.globalFileIndex != nil {
+		t.Error("storage node should not have globalFileIndex")
+	}
+}
+
+/* Test verifyAndRepairReplication detects insufficient replicas */
+func TestVerifyAndRepairReplication_DetectsInsufficientReplicas(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9955, common.RoleStorage, 10)
+	node.SetRole(common.RoleMaster)
+
+	// Add storage nodes to hashRing
+	for i := 0; i < 5; i++ {
+		nodeInfo := common.NodeInfo{
+			ID:       uuid.New(),
+			IP:       fmt.Sprintf("10.0.0.%d", i+1),
+			Port:     8000 + i,
+			Role:     common.RoleStorage,
+			Status:   common.StatusOnline,
+			Priority: i,
+		}
+		node.hashRing.AddNode(nodeInfo)
+		node.AddPeer(&nodeInfo)
+	}
+
+	// Add file with only 1 replica (less than required 3)
+	fileHash := "needsreplication"
+	node.globalFileIndex[fileHash] = &common.GlobalFileInfo{
+		FileID:   uuid.New(),
+		Filename: "important.txt",
+		Hash:     fileHash,
+		Size:     1024,
+		Replicas: []uuid.UUID{uuid.New()}, // only 1 replica
+	}
+
+	// This should detect the file needs more replicas
+	// (actual replication would fail without network, but the detection works)
+	node.verifyAndRepairReplication()
+
+	// The function should have identified the file needs repair
+	// We can't easily verify the message was sent without mocking
+}
+
+/* Test verifyAndRepairReplication with all files having sufficient replicas */
+func TestVerifyAndRepairReplication_AllFilesOK(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9954, common.RoleStorage, 10)
+	node.SetRole(common.RoleMaster)
+
+	// Add file with 3 replicas (sufficient)
+	fileHash := "wellreplicated"
+	node.globalFileIndex[fileHash] = &common.GlobalFileInfo{
+		FileID:   uuid.New(),
+		Filename: "good.txt",
+		Hash:     fileHash,
+		Size:     512,
+		Replicas: []uuid.UUID{uuid.New(), uuid.New(), uuid.New()},
+	}
+
+	// Should complete without issues
+	node.verifyAndRepairReplication()
+}
+
+/* Test initiateReplication skips when no missing nodes */
+func TestInitiateReplication_SkipsWhenNoMissingNodes(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9953, common.RoleStorage, 10)
+	node.SetRole(common.RoleMaster)
+
+	// Add storage nodes
+	storageNode1 := &common.NodeInfo{
+		ID: uuid.New(), IP: "10.0.0.1", Port: 8001, Role: common.RoleStorage,
+		Status: common.StatusOnline, Priority: 1,
+	}
+	storageNode2 := &common.NodeInfo{
+		ID: uuid.New(), IP: "10.0.0.2", Port: 8002, Role: common.RoleStorage,
+		Status: common.StatusOnline, Priority: 2,
+	}
+	storageNode3 := &common.NodeInfo{
+		ID: uuid.New(), IP: "10.0.0.3", Port: 8003, Role: common.RoleStorage,
+		Status: common.StatusOnline, Priority: 3,
+	}
+
+	node.hashRing.AddNode(*storageNode1)
+	node.hashRing.AddNode(*storageNode2)
+	node.hashRing.AddNode(*storageNode3)
+	node.AddPeer(storageNode1)
+	node.AddPeer(storageNode2)
+	node.AddPeer(storageNode3)
+
+	// Get expected nodes for a file
+	expectedNodes := node.hashRing.FindNodesForFile("testfile.txt", 3)
+	replicas := make([]uuid.UUID, len(expectedNodes))
+	for i, n := range expectedNodes {
+		replicas[i] = n.ID
+	}
+
+	// File already has all expected replicas
+	fileInfo := &common.GlobalFileInfo{
+		FileID:   uuid.New(),
+		Filename: "testfile.txt",
+		Hash:     "fullreplicas",
+		Size:     100,
+		Replicas: replicas,
+	}
+
+	// Should return early without sending any messages
+	node.initiateReplication(fileInfo, 3)
+}
+
+/* Test initiateReplication skips when file has no replicas */
+func TestInitiateReplication_SkipsWhenNoReplicas(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9952, common.RoleStorage, 10)
+	node.SetRole(common.RoleMaster)
+
+	// File with no replicas (data lost)
+	fileInfo := &common.GlobalFileInfo{
+		FileID:   uuid.New(),
+		Filename: "lost.txt",
+		Hash:     "noreplicas",
+		Size:     100,
+		Replicas: []uuid.UUID{}, // empty!
+	}
+
+	// Should log warning and return early
+	node.initiateReplication(fileInfo, 3)
+}
+
+/* Test SetRole initializes globalFileIndex when becoming master */
+func TestSetRole_InitializesGlobalFileIndex(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9951, common.RoleStorage, 1)
+
+	// Storage node should not have globalFileIndex
+	if node.globalFileIndex != nil {
+		t.Error("storage node should not have globalFileIndex initially")
+	}
+
+	// Become master
+	node.SetRole(common.RoleMaster)
+
+	// Should have globalFileIndex
+	if node.globalFileIndex == nil {
+		t.Error("master node should have globalFileIndex after SetRole")
+	}
+}
+
+/* Test SetRole cleans up globalFileIndex when becoming storage */
+func TestSetRole_CleansUpGlobalFileIndex(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9950, common.RoleStorage, 1)
+	node.SetRole(common.RoleMaster)
+
+	// Add some data
+	node.globalFileIndex["somehash"] = &common.GlobalFileInfo{
+		FileID: uuid.New(), Filename: "test.txt", Hash: "somehash",
+	}
+
+	// Demote to storage
+	node.SetRole(common.RoleStorage)
+
+	// Should be cleaned up
+	if node.globalFileIndex != nil {
+		t.Error("globalFileIndex should be nil after demotion to storage")
+	}
+}
+
+/* Test syncMetadataAfterElection only runs once at a time */
+func TestSyncMetadataAfterElection_OnlyRunsOnce(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9949, common.RoleStorage, 10)
+	node.SetRole(common.RoleMaster)
+
+	// Manually set sync in progress
+	node.syncMutex.Lock()
+	node.syncInProgress = true
+	node.syncMutex.Unlock()
+
+	// Try to start sync - should return immediately
+	node.syncMetadataAfterElection()
+
+	// If it returned immediately, syncInProgress should still be true
+	node.syncMutex.Lock()
+	stillInProgress := node.syncInProgress
+	node.syncMutex.Unlock()
+
+	if !stillInProgress {
+		t.Error("sync should not have started when already in progress")
+	}
+}
+
+/* Test handleReplicateFile processes request correctly */
+func TestHandleReplicateFile_ProcessesRequest(t *testing.T) {
+	node := CreateNodeWithBully("127.0.0.1", 9948, common.RoleStorage, 1)
+
+	// Add target peer
+	targetNodeID := uuid.New()
+	node.AddPeer(&common.NodeInfo{
+		ID:            targetNodeID,
+		IP:            "10.0.0.5",
+		Port:          8005,
+		Role:          common.RoleStorage,
+		Status:        common.StatusOnline,
+		Priority:      5,
+		LastHeartbeat: time.Now(),
+	})
+
+	request := common.ReplicateFileRequest{
+		FileID:      uuid.New(),
+		Filename:    "replicate.txt",
+		Hash:        "nonexistenthash", // file doesn't exist
+		SourceNode:  node.ID,
+		TargetNodes: []uuid.UUID{targetNodeID},
+	}
+	payload, _ := json.Marshal(request)
+
+	msg := common.Message{
+		Type:    common.MessageReplicateFile,
+		From:    uuid.New(),
+		Payload: payload,
+	}
+
+	// Should not panic even when file doesn't exist
+	node.handleReplicateFile(msg)
+}
+
+/* Test GetAllMetadata returns stored files */
+func TestGetAllMetadata_ReturnsStoredFiles(t *testing.T) {
+	// Create temporary storage
+	tmpDir := t.TempDir()
+	storage := storage.NewLocalStorage(tmpDir)
+
+	// Initially empty
+	meta := storage.GetAllMetadata()
+	if len(meta) != 0 {
+		t.Errorf("expected 0 files initially, got %d", len(meta))
 	}
 }

@@ -137,12 +137,19 @@ type FileRetrieveResponse struct {
 }
 
 type GlobalFileInfo struct {
-	FileId      uuid.UUID
+	FileID      uuid.UUID
 	Filename    string
 	Hash        string
 	Size        int64 // in bytes
 	ContentType string
 	Replicas    []uuid.UUID
+}
+
+type MetadataSyncState struct {
+	RequestID     string
+	ExpectedNodes int
+	ReceivedNodes map[uuid.UUID]bool
+	Done          chan struct{}
 }
 
 type MetadataRequest struct {

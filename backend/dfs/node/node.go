@@ -65,6 +65,9 @@ type Node struct {
 	syncInProgress bool
 	syncMutex      sync.Mutex
 
+	pendingMetadataSync      *common.MetadataSyncState
+	pendingMetadataSyncMutex sync.Mutex
+
 	logger *log.Logger
 }
 
@@ -685,8 +688,6 @@ func (n *Node) handleMetadataResponse(msg Message) {
 	}
 
 	n.globalFileIndexMutex.Lock()
-	defer n.globalFileIndexMutex.Unlock()
-
 	for _, file := range response.Files {
 		if existing, exists := n.globalFileIndex[file.Hash]; exists {
 			found := false
@@ -701,7 +702,7 @@ func (n *Node) handleMetadataResponse(msg Message) {
 			}
 		} else {
 			n.globalFileIndex[file.Hash] = &GlobalFileInfo{
-				FileId:      file.FileID,
+				FileID:      file.FileID,
 				Filename:    file.Filename,
 				Hash:        file.Hash,
 				Size:        file.Size,
@@ -710,8 +711,18 @@ func (n *Node) handleMetadataResponse(msg Message) {
 			}
 		}
 	}
+	n.globalFileIndexMutex.Unlock()
 
 	n.logger.Printf("Received metadata from node %s: %d files", response.NodeID, len(response.Files))
+
+	n.pendingMetadataSyncMutex.Lock()
+	if n.pendingMetadataSync != nil && n.pendingMetadataSync.RequestID == response.RequestID {
+		n.pendingMetadataSync.ReceivedNodes[response.NodeID] = true
+		if len(n.pendingMetadataSync.ReceivedNodes) >= n.pendingMetadataSync.ExpectedNodes {
+			close(n.pendingMetadataSync.Done)
+		}
+	}
+	n.pendingMetadataSyncMutex.Unlock()
 }
 
 func (n *Node) handleReplicateFile(msg Message) {
@@ -1081,12 +1092,172 @@ func (n *Node) initMasterResources() {
 	n.pendingUploads = make(map[uuid.UUID]*common.PendingUpload)
 	n.globalFileIndex = make(map[string]*common.GlobalFileInfo)
 
-	for _, peer := range n.GetAllPeers() {
+	for _, peer := range n.GetPeers() {
 		if peer.Role == common.RoleStorage {
-			n.hashRing.AddNode(*peer)
+			n.hashRing.AddNode(peer)
 		}
 	}
 	n.logger.Printf("Initialized master resources with %d storage nodes", n.hashRing.GetNodeCount())
+
+	go n.syncMetadataAfterElection()
+}
+
+func (n *Node) syncMetadataAfterElection() {
+	n.syncMutex.Lock()
+	if n.syncInProgress {
+		n.syncMutex.Unlock()
+		return
+	}
+	n.syncInProgress = true
+	n.syncMutex.Unlock()
+
+	defer func() {
+		n.syncMutex.Lock()
+		n.syncInProgress = false
+		n.syncMutex.Unlock()
+	}()
+
+	n.logger.Printf("Starting post-election metadata sync...")
+
+	if n.hashRing == nil {
+		n.logger.Printf("No hash ring available, skipping metadata sync")
+		return
+	}
+
+	storageNodes := n.hashRing.GetNodeCount()
+
+	if storageNodes == 0 {
+		n.logger.Printf("No storage nodes to sync with")
+		return
+	}
+
+	requestID := uuid.New().String()
+	syncState := &common.MetadataSyncState{
+		RequestID:     requestID,
+		ExpectedNodes: storageNodes,
+		ReceivedNodes: make(map[uuid.UUID]bool),
+		Done:          make(chan struct{}),
+	}
+
+	n.pendingMetadataSyncMutex.Lock()
+	n.pendingMetadataSync = syncState
+	n.pendingMetadataSyncMutex.Unlock()
+
+	defer func() {
+		n.pendingMetadataSyncMutex.Lock()
+		n.pendingMetadataSync = nil
+		n.pendingMetadataSyncMutex.Unlock()
+	}()
+
+	n.requestMetadataFromAllNodes(requestID)
+
+	select {
+	case <-syncState.Done:
+		n.logger.Printf("Received metadata from all %d storage nodes", storageNodes)
+	case <-time.After(10 * time.Second):
+		n.logger.Printf("Metadata sync timeout, received %d/%d responses",
+			len(syncState.ReceivedNodes), storageNodes)
+	}
+
+	n.verifyAndRepairReplication()
+}
+
+func (n *Node) requestMetadataFromAllNodes(requestID string) {
+	request := common.MetadataRequest{
+		RequestID: requestID,
+	}
+	payload, _ := json.Marshal(request)
+
+	msg := common.Message{
+		Type:    common.MessageMetadataRequest,
+		From:    n.ID,
+		Payload: payload,
+	}
+
+	storageNodes := 0
+	for _, peer := range n.GetPeers() {
+		if peer.Role == common.RoleStorage {
+			go n.SendMessage(peer.IP, peer.Port, msg)
+			storageNodes++
+		}
+	}
+
+	n.logger.Printf("Requested metadata from %d storage nodes", storageNodes)
+}
+
+func (n *Node) verifyAndRepairReplication() {
+	const requiredReplicas = 3
+
+	filesToRepair := make([]*GlobalFileInfo, 0)
+	n.globalFileIndexMutex.RLock()
+	for _, fileInfo := range n.globalFileIndex {
+		if len(fileInfo.Replicas) < requiredReplicas {
+			filesToRepair = append(filesToRepair, fileInfo)
+		}
+	}
+	n.globalFileIndexMutex.RUnlock()
+
+	if len(filesToRepair) == 0 {
+		n.logger.Print("All files have sufficient replicas")
+		return
+	}
+
+	n.logger.Printf("Found %d files with insufficient replicas, repairing...", len(filesToRepair))
+
+	for _, fileInfo := range filesToRepair {
+		n.initiateReplication(fileInfo, requiredReplicas)
+	}
+}
+
+func (n *Node) initiateReplication(fileInfo *GlobalFileInfo, requiredReplicas int) {
+	if len(fileInfo.Replicas) == 0 {
+		n.logger.Printf("File %s has no replicas, skipping replication", fileInfo.Hash)
+		return
+	}
+
+	expectedNodes := n.hashRing.FindNodesForFile(fileInfo.Filename, requiredReplicas)
+
+	existingReplicas := make(map[uuid.UUID]bool)
+	for _, nodeID := range fileInfo.Replicas {
+		existingReplicas[nodeID] = true
+	}
+
+	missingNodes := make([]uuid.UUID, 0)
+	for _, node := range expectedNodes {
+		if !existingReplicas[node.ID] {
+			missingNodes = append(missingNodes, node.ID)
+		}
+	}
+
+	if len(missingNodes) == 0 {
+		return
+	}
+
+	sourceNodeID := fileInfo.Replicas[0]
+	sourcePeer, exists := n.GetPeer(sourceNodeID)
+	if !exists {
+		n.logger.Printf("Source node %s not found for replication of %s", sourceNodeID, fileInfo.Hash)
+		return
+	}
+
+	request := common.ReplicateFileRequest{
+		FileID:      fileInfo.FileID,
+		Filename:    fileInfo.Filename,
+		Hash:        fileInfo.Hash,
+		SourceNode:  sourceNodeID,
+		TargetNodes: missingNodes,
+	}
+	payload, _ := json.Marshal(request)
+
+	msg := common.Message{
+		Type:    common.MessageReplicateFile,
+		From:    n.ID,
+		To:      sourceNodeID,
+		Payload: payload,
+	}
+
+	go n.SendMessage(sourcePeer.IP, sourcePeer.Port, msg)
+	n.logger.Printf("Initiated replication of file %s from %s to %d nodes", fileInfo.Filename, sourceNodeID, len(missingNodes))
 }
 
 func (n *Node) AddPeer(peer *NodeInfo) {
@@ -1103,17 +1274,6 @@ func (n *Node) GetPeer(peerID uuid.UUID) (*NodeInfo, bool) {
 
 	peer, exists := n.peers[peerID]
 	return peer, exists
-}
-
-func (n *Node) GetAllPeers() []*NodeInfo {
-	n.peerMutex.RLock()
-	defer n.peerMutex.RUnlock()
-
-	peers := make([]*NodeInfo, 0, len(n.peers))
-	for _, peer := range n.peers {
-		peers = append(peers, peer)
-	}
-	return peers
 }
 
 func (n *Node) GetNodeInfo() *NodeInfo {
@@ -1138,6 +1298,16 @@ func (n *Node) GetPriority() int {
 
 func (n *Node) GetRole() NodeRole {
 	return n.Role
+}
+
+func (n *Node) GetStorage() *storage.LocalStorage {
+	return n.storage
+}
+
+func (n *Node) GetGlobalFileIndex() map[string]*common.GlobalFileInfo {
+	n.globalFileIndexMutex.RLock()
+	defer n.globalFileIndexMutex.RUnlock()
+	return n.globalFileIndex
 }
 
 func (n *Node) SetRole(role NodeRole) {

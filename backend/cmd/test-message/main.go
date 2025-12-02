@@ -45,8 +45,8 @@ func main() {
 	time.Sleep(6 * time.Second)
 	log.Println()
 
-	peers1 := node1.GetAllPeers()
-	peers2 := node2.GetAllPeers()
+	peers1 := node1.GetPeers()
+	peers2 := node2.GetPeers()
 
 	log.Println("Results")
 	log.Printf("Node1 (%s) knows about %d peer(s):", node1.ID, len(peers1))

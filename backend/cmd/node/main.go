@@ -48,7 +48,7 @@ func main() {
 		if err := n.DiscoverPeers(*seedIP, *seedPort); err != nil {
 			log.Printf("Warning: Discovery failed: %v", err)
 		} else {
-			peers := n.GetAllPeers()
+			peers := n.GetPeers()
 			log.Printf("Discovery successful! Found %d peers", len(peers))
 		}
 	}

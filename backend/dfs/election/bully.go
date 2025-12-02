@@ -25,6 +25,11 @@ type NodeCommunicator interface {
 	BroadcastMessage(data common.Message) error
 }
 
+const (
+	coordinatorWaitTimeout = 500 * time.Millisecond
+	electionTimeout        = 3 * time.Second
+)
+
 type BullyElector struct {
 	node NodeCommunicator
 
@@ -33,6 +38,9 @@ type BullyElector struct {
 
 	okChan  chan bool
 	okMutex sync.Mutex
+
+	leaderCancelChan  chan struct{}
+	leaderCancelMutex sync.Mutex
 
 	stopChan chan struct{}
 
@@ -89,11 +97,7 @@ func (b *BullyElector) StartElection(ctx context.Context) error {
 	payload, _ := json.Marshal(nodeInfo)
 
 	b.peerMutex.RLock()
-	nodePeers := b.node.GetPeers()
-	peers := make([]common.NodeInfo, 0, len(nodePeers))
-	for _, peer := range nodePeers {
-		peers = append(peers, peer)
-	}
+	peers := append([]common.NodeInfo{}, b.node.GetPeers()...)
 	b.peerMutex.RUnlock()
 
 	okChan := make(chan bool, 1)
@@ -103,6 +107,7 @@ func (b *BullyElector) StartElection(ctx context.Context) error {
 	}
 	b.okChan = okChan
 	b.okMutex.Unlock()
+
 	higherPriorityExists := false
 	for _, peer := range peers {
 		if peer.Priority > nodeInfo.Priority {
@@ -125,12 +130,11 @@ func (b *BullyElector) StartElection(ctx context.Context) error {
 	select {
 	case <-okChan:
 		b.logger.Printf("Received OK from higher priority node, stopping election")
-	case <-time.After(3 * time.Second):
+	case <-time.After(electionTimeout):
 		b.logger.Printf("No OK messages received, declaring self as coordinator")
 		b.becomeLeader()
 	case <-ctx.Done():
 		return nil
-
 	}
 
 	b.okMutex.Lock()
@@ -141,13 +145,35 @@ func (b *BullyElector) StartElection(ctx context.Context) error {
 }
 
 func (b *BullyElector) becomeLeader() {
+	b.logger.Printf("Becoming leader...")
+
+	cancelChan := make(chan struct{}, 1)
+	b.leaderCancelMutex.Lock()
+	b.leaderCancelChan = cancelChan
+	b.leaderCancelMutex.Unlock()
+
+	defer func() {
+		b.leaderCancelMutex.Lock()
+		b.leaderCancelChan = nil
+		b.leaderCancelMutex.Unlock()
+	}()
+
 	msg := common.Message{
 		Type: common.MessageCoordinator,
 		From: b.node.GetID(),
 	}
-
 	b.node.BroadcastMessage(msg)
+
+	select {
+	case <-cancelChan:
+		b.logger.Printf("Received higher priority coordinator, aborting")
+		return
+	case <-time.After(coordinatorWaitTimeout):
+		b.logger.Printf("No higher priority coordinator, becoming leader")
+	}
+
 	b.node.SetRole(common.RoleMaster)
+	b.logger.Printf("Now acting as leader")
 }
 
 func (b *BullyElector) HandleMessage(ctx context.Context, msg common.Message) error {
@@ -217,6 +243,51 @@ func (b *BullyElector) handleOK(msg common.Message) error {
 func (b *BullyElector) handleCoordinator(msg common.Message) error {
 	b.logger.Printf("Coordinator message received from %s", msg.From)
 
+	senderPriority := -1
+	for _, peer := range b.node.GetPeers() {
+		if peer.ID == msg.From {
+			senderPriority = peer.Priority
+			break
+		}
+	}
+
+	myPriority := b.node.GetPriority()
+
+	if senderPriority != -1 && senderPriority < myPriority {
+		b.logger.Printf("Ignoring coordinator from lower priority node %s (their: %d, mine: %d)",
+			msg.From, senderPriority, myPriority)
+		if b.node.GetRole() == common.RoleMaster {
+			reMsg := common.Message{
+				Type: common.MessageCoordinator,
+				From: b.node.GetID(),
+			}
+			go b.node.BroadcastMessage(reMsg)
+		}
+		return nil
+	}
+
+	b.electionMutex.Lock()
+	b.electionInProgress = false
+	b.electionMutex.Unlock()
+
+	b.leaderCancelMutex.Lock()
+	if b.leaderCancelChan != nil {
+		select {
+		case b.leaderCancelChan <- struct{}{}:
+		default:
+		}
+	}
+	b.leaderCancelMutex.Unlock()
+
+	b.okMutex.Lock()
+	if b.okChan != nil {
+		select {
+		case b.okChan <- true:
+		default:
+		}
+	}
+	b.okMutex.Unlock()
+
 	b.node.UpdatePeerRole(msg.From, common.RoleMaster)
 
 	for _, peer := range b.node.GetPeers() {
@@ -225,7 +296,9 @@ func (b *BullyElector) handleCoordinator(msg common.Message) error {
 		}
 	}
 
-	if b.node.GetRole() != common.RoleStorage {
+	if b.node.GetRole() == common.RoleMaster {
+		b.logger.Printf("Demoting self - coordinator %s has priority %d (mine: %d)",
+			msg.From, senderPriority, myPriority)
 		b.node.SetRole(common.RoleStorage)
 	}
 

@@ -61,22 +61,22 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 - [x] Zaimplementować automatyczne rozpoczęcie elekcji po wykryciu awarii
 - [x] Zaimplementować scenariusz powrotu starego mastera (nie przejmuje roli automatycznie)
 
-3. Synchronizacja po elekcji
+3. [x] Synchronizacja po elekcji
 
-- Zaimplementować pobieranie metadanych od wszystkich węzłów przez nowego mastera
-- Zaimplementować weryfikację spójności danych
-- Zaimplementować inicjację brakujących replikacji
+- [x] Zaimplementować pobieranie metadanych od wszystkich węzłów przez nowego mastera
+- [x] Zaimplementować weryfikację spójności danych
+- [x] Zaimplementować inicjację brakujących replikacji
 
 ### DISTRIBUTED LOCKING
 
-1. Lamport Timestamps
+1. [x] Lamport Timestamps
 
 - [x] Zaimplementować Lamport clock - lokalny licznik dla każdego węzła
 - [x] Zaimplementować increment clock przy każdym evencie
 - [x] Zaimplementować aktualizację clock przy otrzymaniu wiadomości: max(local, received) + 1
 - [x] Zaimplementować funkcję porównującą timestampy z tiebreaker po node ID
 
-2. Kolejka żądań blokad
+2. [x] Kolejka żądań blokad
 
 - [x] Zaimplementować lokalną kolejkę lock_queue posortowaną po timestamp
 - [x] Zaimplementować wysyłanie LOCK_REQUEST z timestamp do wszystkich węzłów
@@ -84,7 +84,7 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 - [x] Zaimplementować warunek wejścia do sekcji krytycznej (pierwszy w kolejce + ACK od wszystkich)
 - [x] Zaimplementować LOCK_RELEASE i usuwanie z kolejki
 
-3. Timeout dla blokad
+3. [x] Timeout dla blokad
 
 - [x] Zaimplementować timeout na lock (np. 30s)
 - [x] Zaimplementować auto-release przy timeout
@@ -108,9 +108,7 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 3. Rozwiązywanie zakleszczeń
 
 - [x] Zaimplementować zwolnienie wszystkich locków przez ofiarę
-- Zaimplementować exponential backoff przed ponowną próbą
 - Zaimplementować logowanie incydentów zakleszczenia
-- Zaimplementować metrykę liczby zakleszczeń (prometheus/grafana?)
 
 ### PRZECHOWYWANIE I METADANE
 

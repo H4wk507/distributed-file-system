@@ -13,7 +13,7 @@ func printCoordinatorStatus(node1, node2, node3 *node.Node) {
 		info1 := node1.GetNodeInfo()
 		log.Printf("Node1 (Priority 10): Role=%s, Status=%s", info1.Role, info1.Status)
 
-		peers := node1.GetAllPeers()
+		peers := node1.GetPeers()
 		for _, peer := range peers {
 			log.Printf("  -> Peer %s: Priority=%d, Role=%s", peer.ID, peer.Priority, peer.Role)
 		}
@@ -23,7 +23,7 @@ func printCoordinatorStatus(node1, node2, node3 *node.Node) {
 		info2 := node2.GetNodeInfo()
 		log.Printf("Node2 (Priority 5): Role=%s, Status=%s", info2.Role, info2.Status)
 
-		peers := node2.GetAllPeers()
+		peers := node2.GetPeers()
 		for _, peer := range peers {
 			log.Printf("  -> Peer %s: Priority=%d, Role=%s", peer.ID, peer.Priority, peer.Role)
 		}
@@ -33,7 +33,7 @@ func printCoordinatorStatus(node1, node2, node3 *node.Node) {
 		info3 := node3.GetNodeInfo()
 		log.Printf("Node3 (Priority 1): Role=%s, Status=%s", info3.Role, info3.Status)
 
-		peers := node3.GetAllPeers()
+		peers := node3.GetPeers()
 		for _, peer := range peers {
 			log.Printf("  -> Peer %s: Priority=%d, Role=%s", peer.ID, peer.Priority, peer.Role)
 		}
@@ -74,9 +74,9 @@ func main() {
 	time.Sleep(6 * time.Second)
 	log.Println()
 
-	peers1 := node1.GetAllPeers()
-	peers2 := node2.GetAllPeers()
-	peers3 := node3.GetAllPeers()
+	peers1 := node1.GetPeers()
+	peers2 := node2.GetPeers()
+	peers3 := node3.GetPeers()
 
 	if len(peers1) != 2 || len(peers2) != 2 || len(peers3) != 2 {
 		log.Fatalf("Peer discovery failed: node1 has %d peers, node2 has %d peers, node3 has %d peers", len(peers1), len(peers2), len(peers3))
