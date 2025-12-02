@@ -41,9 +41,13 @@ func main() {
 	storage1.AddPeer(master.GetNodeInfo())
 	storage2.AddPeer(master.GetNodeInfo())
 
+	authHandler := handlers.NewAuthHandler(db)
 	fileHandler := handlers.NewFileHandler(db, master)
 
 	router := http.NewServeMux()
+	router.HandleFunc("POST /api/auth/register", authHandler.RegisterUser)
+	router.HandleFunc("POST /api/auth/login", authHandler.LoginUser)
+
 	router.HandleFunc("POST /api/files/upload/", fileHandler.UploadFile)
 	router.HandleFunc("GET /api/files/{filename}/", fileHandler.GetFile)
 	router.HandleFunc("DELETE /api/files/{filename}/", fileHandler.DeleteFile)
