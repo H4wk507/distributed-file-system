@@ -3,20 +3,49 @@ version: "3.8"
 services:
   postgres:
     image: postgres:18-alpine
+    restart: unless-stopped
     container_name: postgres
+    env_file:
+      - .env
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+      - POSTGRES_HOST_AUTH_METHOD=trust
+      - HOST=postgres
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
+    networks:
+      - my-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
+  
+  migrate:
+    image: migrate/migrate
+    env_file:
+      - .env
+    environment:
+      - HOST=postgres
+    command:
+      [
+        "-path",
+        "/migrations",
+        "-database",
+        "postgres://${DB_USER}:${DB_PASSWORD}@postgres:${DB_PORT}/${DB_NAME}?sslmode=${DB_SSLMODE}",
+        "up",
+      ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - my-network
+    volumes:
+      - ./backend/migrations:/migrations
 
+networks:
+  my-network:
+    driver: bridge
 volumes:
   postgres_data:
