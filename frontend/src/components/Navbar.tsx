@@ -1,6 +1,6 @@
 import { useAuth } from "@/context/AuthContext";
 import { useLogout } from "@/hooks/useAuth";
-import { Files, LogOut, Server, Settings, User } from "lucide-react";
+import { Activity, Files, LogOut, Server, Settings, User } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "./ui/button";
 import {
@@ -15,6 +15,7 @@ import {
 const navLinks = [
   { href: "/", label: "Pliki", icon: Files },
   { href: "/nodes", label: "Węzły", icon: Server },
+  { href: "/monitoring", label: "Monitoring", icon: Activity },
 ];
 
 export function Navbar() {

@@ -261,21 +261,21 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 ### FRONTEND - NODES DASHBOARD
 
-1. Lista węzłów
+1. [x] Lista węzłów
 
-- Zaimplementować responsive grid (3/2/1 kolumny)
-- Zaimplementować NodeCard pokazującą: ID, status, role, IP, metryki
+- [x] Zaimplementować responsive grid (3/2/1 kolumny)
+- [x] Zaimplementować NodeCard pokazującą: ID, status, role, IP, metryki
 - Zaimplementować real-time update statusu przez WebSocket
-- Zaimplementować badge dla mastera
+- [x] Zaimplementować badge dla mastera
 
-2. Szczegóły węzła
+2. [x] Szczegóły węzła
 
-- Zaimplementować slide-in panel z prawej przy kliknięciu
-- Zaimplementować tabs: Overview, Metrics, Files, Logs
-- Zaimplementować Overview z podstawowymi info
+- [x] Zaimplementować slide-in panel z prawej przy kliknięciu
+- [x] Zaimplementować tabs: Overview, Metrics, Files, Logs
+- [x] Zaimplementować Overview z podstawowymi info
 - Zaimplementować Metrics z live charts (Recharts)
-- Zaimplementować Files z listą plików na węźle
-- Zaimplementować Logs z ostatnimi 100 wpisami
+- [x] Zaimplementować Files z listą plików na węźle
+- [x] Zaimplementować Logs z ostatnimi 100 wpisami
 
 3. Topologia klastra
 
@@ -294,11 +294,11 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 ### FRONTEND - MONITORING
 
-1. System Health
+1. [x] System Health
 
-- Zaimplementować 4 karty: Total Files, Active Nodes, Storage Used, Uptime
-- Zaimplementować animowane liczniki (count-up effect)
-- Zaimplementować color coding: green/yellow/red
+- [x] Zaimplementować 4 karty: Total Files, Active Nodes, Storage Used, Uptime
+- [x] Zaimplementować animowane liczniki (count-up effect)
+- [x] Zaimplementować color coding: green/yellow/red
 - Zaimplementować threshold alerts
 
 2. Performance Charts
@@ -309,19 +309,19 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 - Zaimplementować pie chart: file types breakdown
 - Zaimplementować auto-update co 10s przez WebSocket
 
-3. Live Logs
+3. [x] Live Logs
 
-- Zaimplementować scrollable container z ostatnimi 200 logami
+- [x] Zaimplementować scrollable container z ostatnimi 200 logami
 - Zaimplementować auto-scroll do dołu
-- Zaimplementować color coding dla log levels
-- Zaimplementować filtering po level i search
-- Zaimplementować export logs button
+- [x] Zaimplementować color coding dla log levels
+- [x] Zaimplementować filtering po level i search
+- [x] Zaimplementować export logs button
 
-4. Alerts Panel
+4. [x] Alerts Panel
 
-- Zaimplementować listę aktywnych alertów
-- Zdefiniować alert types: Node Offline, Deadlock, Low Storage, High Latency
-- Zaimplementować wyświetlanie: timestamp, severity, message, dismiss button
+- [x] Zaimplementować listę aktywnych alertów
+- [x] Zdefiniować alert types: Node Offline, Deadlock, Low Storage, High Latency
+- [x] Zaimplementować wyświetlanie: timestamp, severity, message, dismiss button
 - Zaimplementować toast przy nowym alercie
 - Zaimplementować archiwum rozwiązanych alertów
 
@@ -333,21 +333,6 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 - Zaimplementować generowanie master key przy inicjalizacji
 - Zaimplementować dystrybucję master key do węzłów
 - Zaimplementować deszyfrowanie przy odczycie
-
-2. Access Control Lists
-
-- Dodać do metadanych: permissions {owner, read[], write[]}
-- Zaimplementować sprawdzanie uprawnień przy każdej operacji
-- Zaimplementować możliwość modyfikacji permissions przez ownera
-- Zaimplementować UI dialog "Share file"
-
-3. Audit Log
-
-- Zaimplementować logowanie każdej operacji: {timestamp, user, action, resource, result, ip}
-- Zaimplementować append-only storage dla audit logs
-- Zaimplementować UI dla przeglądania audit logs
-- Zaimplementować filtering i export
-- Zaimplementować retention policy (90 dni)
 
 ### TESTOWANIE
 
