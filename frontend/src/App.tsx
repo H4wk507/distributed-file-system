@@ -2,10 +2,13 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import HomePage from "@/pages/HomePage";
 import LoginPage from "@/pages/LoginPage";
+import MonitoringPage from "@/pages/MonitoringPage";
+import NodesPage from "@/pages/NodesPage";
 import RegisterPage from "@/pages/RegisterPage";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { Toaster } from "sonner";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -62,6 +65,22 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/nodes"
+        element={
+          <ProtectedRoute>
+            <NodesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/monitoring"
+        element={
+          <ProtectedRoute>
+            <MonitoringPage />
+          </ProtectedRoute>
+        }
+      />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
@@ -75,6 +94,7 @@ export default function App() {
           <AppRoutes />
         </AuthProvider>
       </BrowserRouter>
+      <Toaster position="bottom-right" richColors closeButton />
     </QueryClientProvider>
   );
 }
