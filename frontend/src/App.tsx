@@ -6,6 +6,7 @@ import RegisterPage from "@/pages/RegisterPage";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { Toaster } from "sonner";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -75,6 +76,7 @@ export default function App() {
           <AppRoutes />
         </AuthProvider>
       </BrowserRouter>
+      <Toaster position="bottom-right" richColors closeButton />
     </QueryClientProvider>
   );
 }

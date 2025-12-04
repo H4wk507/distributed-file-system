@@ -205,61 +205,59 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 ### FRONTEND - PODSTAWOWY SETUP
 
-1. Setup projektu
+1. [x] Setup projektu
 
-- Zainicjalizować Vite + React + TypeScript
-- Zainstalować i skonfigurować Tailwind CSS
-- Zainicjalizować shadcn/ui
+- [x] Zainicjalizować Vite + React + TypeScript
+- [x] Zainstalować i skonfigurować Tailwind CSS
+- [x] Zainicjalizować shadcn/ui
 
 2. Layout
 
-- Zaimplementować Navbar - logo, navigation, user menu, dark mode toggle
-- Zaimplementować Sidebar - collapsible na mobile
-- Zaimplementować MainLayout wrapper
-- Zaimplementować Footer
+- [x] Zaimplementować Navbar - logo, navigation, user menu
+- [x] Zaimplementować MainLayout wrapper
 
-3. Integracja API
+3. [x] Integracja API
 
-- Stworzyć axios instance z base URL
-- Zaimplementować interceptor dla auth - dodawanie JWT
-- Zaimplementować interceptor dla błędów - toast przy errorze
-- Zainstalować i skonfigurować TanStack Query
-- Stworzyć custom hooks: useFiles, useNodes, useMetrics
+- [x] Stworzyć axios instance z base URL
+- [x] Zaimplementować interceptor dla auth - dodawanie JWT (httpOnly cookies)
+- [x] Zaimplementować interceptor dla błędów - toast przy errorze
+- [x] Zainstalować i skonfigurować TanStack Query
+- [x] Stworzyć custom hooks: useFiles, useNodes, useMetrics
 
 ### FRONTEND - FILE EXPLORER
 
-1. Lista plików
+1. [x] Lista plików
 
-- Zaimplementować komponent FileList z shadcn Table
-- Zaimplementować kolumny: ikona+nazwa, rozmiar, data, repliki, akcje
-- Zaimplementować sortowanie po kolumnach
-- Zaimplementować search bar filtrujący po nazwie
-- Zaimplementować paginację
+- [x] Zaimplementować komponent FileList z shadcn Table
+- [x] Zaimplementować kolumny: ikona+nazwa, rozmiar, data, repliki, akcje
+- [x] Zaimplementować sortowanie po kolumnach
+- [x] Zaimplementować search bar filtrujący po nazwie
+- [x] Zaimplementować paginację
 
-2. Upload plików
+2. [x] Upload plików
 
-- Zaimplementować FileUploader z react-dropzone
-- Zaimplementować drag & drop zone
-- Zaimplementować multi-file upload
-- Zaimplementować progress bar dla każdego pliku
-- Zaimplementować możliwość anulowania upload
-- Zaimplementować walidację rozmiaru i typu plików
-- Zaimplementować toast po sukcesie i auto-refresh
+- [x] Zaimplementować FileUploader z react-dropzone
+- [x] Zaimplementować drag & drop zone
+- [x] Zaimplementować multi-file upload
+- [x] Zaimplementować progress bar dla każdego pliku
+- [x] Zaimplementować możliwość anulowania upload
+- [x] Zaimplementować walidację rozmiaru i typu plików
+- [x] Zaimplementować toast po sukcesie i auto-refresh
 
-3. Akcje na plikach
+3. [x] Akcje na plikach
 
-- Zaimplementować przycisk Download triggerujący browser download
-- Zaimplementować przycisk Delete z confirm dialog
-- Zaimplementować przycisk Info otwierający dialog z metadanymi
+- [x] Zaimplementować przycisk Download triggerujący browser download
+- [x] Zaimplementować przycisk Delete z confirm dialog
+- [x] Zaimplementować przycisk Info otwierający dialog z metadanymi
 - Zaimplementować context menu (right-click)
-- Zaimplementować bulk actions z checkbox selection
+- [x] Zaimplementować bulk actions z checkbox selection
 
-4. Preview plików
+4. [x] Preview plików
 
-- Zaimplementować dialog preview otwierany klikiem
-- Zaimplementować preview dla obrazków
-- Zaimplementować preview dla PDF
-- Zaimplementować fallback dla innych typów
+- [x] Zaimplementować dialog preview otwierany klikiem
+- [x] Zaimplementować preview dla obrazków
+- [x] Zaimplementować preview dla PDF
+- [x] Zaimplementować fallback dla innych typów
 
 ### FRONTEND - NODES DASHBOARD
 
