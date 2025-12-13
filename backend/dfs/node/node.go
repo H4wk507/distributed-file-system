@@ -1215,7 +1215,7 @@ func (n *Node) initiateReplication(fileInfo *GlobalFileInfo, requiredReplicas in
 		return
 	}
 
-	expectedNodes := n.hashRing.FindNodesForFile(fileInfo.Filename, requiredReplicas)
+	expectedNodes := n.hashRing.FindNodesForFile(fileInfo.FileID, requiredReplicas)
 
 	existingReplicas := make(map[uuid.UUID]bool)
 	for _, nodeID := range fileInfo.Replicas {
@@ -1492,7 +1492,7 @@ func (n *Node) EnterCriticalSection(resourceID string) bool {
 }
 
 func (n *Node) StoreFile(fileID uuid.UUID, filename string, contentType string, data []byte) {
-	nodes := n.hashRing.FindNodesForFile(filename, 3)
+	nodes := n.hashRing.FindNodesForFile(fileID, 3)
 
 	expectedNodes := make([]uuid.UUID, len(nodes))
 	for i, node := range nodes {
@@ -1535,10 +1535,10 @@ func (n *Node) StoreFile(fileID uuid.UUID, filename string, contentType string, 
 	}
 }
 
-func (n *Node) RetrieveFile(filename, hash string) (*common.FileRetrieveResponse, error) {
-	nodes := n.hashRing.FindNodesForFile(filename, 1)
+func (n *Node) RetrieveFile(fileID uuid.UUID, hash string) (*common.FileRetrieveResponse, error) {
+	nodes := n.hashRing.FindNodesForFile(fileID, 1)
 	if len(nodes) == 0 {
-		return nil, fmt.Errorf("no nodes available for file %s", filename)
+		return nil, fmt.Errorf("no nodes available for file %s", fileID)
 	}
 
 	targetNode := nodes[0]
@@ -1580,12 +1580,12 @@ func (n *Node) RetrieveFile(filename, hash string) (*common.FileRetrieveResponse
 		}
 		return response, nil
 	case <-time.After(30 * time.Second):
-		return nil, fmt.Errorf("timeout waiting for file %s", filename)
+		return nil, fmt.Errorf("timeout waiting for file %s", fileID)
 	}
 }
 
-func (n *Node) DeleteFile(filename, hash string) {
-	nodes := n.hashRing.FindNodesForFile(filename, 3)
+func (n *Node) DeleteFile(fileID uuid.UUID, hash string) {
+	nodes := n.hashRing.FindNodesForFile(fileID, 3)
 
 	payload, _ := json.Marshal(hash)
 

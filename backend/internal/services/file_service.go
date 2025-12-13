@@ -4,6 +4,8 @@ import (
 	"dfs-backend/internal/database"
 	"dfs-backend/internal/models"
 	"fmt"
+
+	"github.com/google/uuid"
 )
 
 type FileService struct {
@@ -14,14 +16,13 @@ func NewFileService(db *database.DB) *FileService {
 	return &FileService{db: db}
 }
 
-func (s *FileService) GetFileHashByName(filename string) (string, error) {
-	var hash string
-	query := `select hash from files where filename = $1`
-	if err := s.db.Get(hash, query, filename); err != nil {
-		return "", fmt.Errorf("failed to get hash for file %s: %w", filename, err)
+func (s *FileService) GetFileByID(fileID uuid.UUID) (*models.File, error) {
+	var file models.File
+	query := `select id, name, size, hash, content_type, owner_id from files where id = $1`
+	if err := s.db.Get(&file, query, fileID); err != nil {
+		return nil, fmt.Errorf("failed to get file %s: %w", fileID, err)
 	}
-
-	return hash, nil
+	return &file, nil
 }
 
 func (s *FileService) CreateFile(file *models.File) error {
@@ -33,8 +34,8 @@ func (s *FileService) CreateFile(file *models.File) error {
 	return err
 }
 
-func (s *FileService) DeleteFileByName(filename string) error {
-	query := `delete from files where name = $1`
-	_, err := s.db.Exec(query, filename)
+func (s *FileService) DeleteFileByID(fileID uuid.UUID) error {
+	query := `delete from files where id = $1`
+	_, err := s.db.Exec(query, fileID)
 	return err
 }

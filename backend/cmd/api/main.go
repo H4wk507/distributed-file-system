@@ -57,8 +57,8 @@ func main() {
 	router.Handle("GET /api/auth/me", authMiddleware.RequireAuth(http.HandlerFunc(authHandler.GetMe)))
 
 	router.Handle("POST /api/files/upload/", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.UploadFile)))
-	router.Handle("GET /api/files/{filename}/", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.GetFile)))
-	router.Handle("DELETE /api/files/{filename}/", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.DeleteFile)))
+	router.Handle("GET /api/files/{fileID}/", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.GetFile)))
+	router.Handle("DELETE /api/files/{fileID}/", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.DeleteFile)))
 
 	handler := corsMiddleware(router)
 

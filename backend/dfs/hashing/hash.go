@@ -84,7 +84,7 @@ func (h *HashRing) RemoveNode(nodeID uuid.UUID) {
 	h.ring = newRing
 }
 
-func (h *HashRing) FindNodesForFile(filename string, n int) []common.NodeInfo {
+func (h *HashRing) FindNodesForFile(fileID uuid.UUID, n int) []common.NodeInfo {
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
 
@@ -92,7 +92,7 @@ func (h *HashRing) FindNodesForFile(filename string, n int) []common.NodeInfo {
 		return nil
 	}
 
-	hash := HashKey(filename)
+	hash := HashKey(fileID.String())
 
 	idx := sort.Search(len(h.ring), func(i int) bool {
 		return h.ring[i] >= hash

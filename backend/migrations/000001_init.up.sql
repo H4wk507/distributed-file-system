@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS files (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    name TEXT NOT NULL, -- TODO: unique?
+    name TEXT NOT NULL,
     size BIGINT NOT NULL,
     hash TEXT NOT NULL,
     content_type TEXT NOT NULL,

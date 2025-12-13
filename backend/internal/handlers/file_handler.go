@@ -5,6 +5,7 @@ import (
 	"dfs-backend/dfs/node"
 	"dfs-backend/internal/database"
 	"dfs-backend/internal/dto"
+	"dfs-backend/internal/middleware"
 	"dfs-backend/internal/models"
 	"dfs-backend/internal/services"
 	"dfs-backend/utils/response"
@@ -31,6 +32,12 @@ func NewFileHandler(db *database.DB, n *node.Node) *FileHandler {
 func (h *FileHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		response.Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	claims := middleware.GetUserFromContext(r.Context())
+	if claims == nil {
+		response.Error(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 
@@ -71,7 +78,7 @@ func (h *FileHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		Size:        header.Size,
 		Hash:        contentHashStr,
 		ContentType: contentType,
-		OwnerID:     uuid.Nil, // TODO:
+		OwnerID:     claims.UserID,
 	}
 
 	if err := h.service.CreateFile(fileModel); err != nil {
@@ -101,28 +108,43 @@ func (h *FileHandler) GetFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: move to unique identifier from DB, fileID, and also on hashring
-
-	filename := r.PathValue("filename")
-	if filename == "" {
-		response.Error(w, http.StatusBadRequest, "'filename' not present in path")
+	claims := middleware.GetUserFromContext(r.Context())
+	if claims == nil {
+		response.Error(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 
-	hash, err := h.service.GetFileHashByName(filename)
+	fileIDStr := r.PathValue("fileID")
+	if fileIDStr == "" {
+		response.Error(w, http.StatusBadRequest, "'fileID' not present in path")
+		return
+	}
+
+	fileID, err := uuid.Parse(fileIDStr)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid fileID format")
+		return
+	}
+
+	file, err := h.service.GetFileByID(fileID)
 	if err != nil {
 		response.Error(w, http.StatusNotFound, "File not found")
 		return
 	}
 
-	fileResponse, err := h.node.RetrieveFile(filename, hash)
+	if file.OwnerID != claims.UserID && claims.Role != "admin" {
+		response.Error(w, http.StatusForbidden, "Forbidden")
+		return
+	}
+
+	fileResponse, err := h.node.RetrieveFile(file.ID, file.Hash)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to retrieve file: %v", err))
 		return
 	}
 
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", fileResponse.Filename))
-	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", file.Name))
+	w.Header().Set("Content-Type", file.ContentType)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(fileResponse.Data)))
 
 	w.WriteHeader(http.StatusOK)
@@ -135,30 +157,45 @@ func (h *FileHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: move to unique identifier from DB, fileID, and also on hashring
-
-	filename := r.PathValue("filename")
-	if filename == "" {
-		response.Error(w, http.StatusBadRequest, "'filename' not present in path")
+	claims := middleware.GetUserFromContext(r.Context())
+	if claims == nil {
+		response.Error(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 
-	hash, err := h.service.GetFileHashByName(filename)
+	fileIDStr := r.PathValue("fileID")
+	if fileIDStr == "" {
+		response.Error(w, http.StatusBadRequest, "'fileID' not present in path")
+		return
+	}
+
+	fileID, err := uuid.Parse(fileIDStr)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid fileID format")
+		return
+	}
+
+	file, err := h.service.GetFileByID(fileID)
 	if err != nil {
 		response.Error(w, http.StatusNotFound, "File not found")
 		return
 	}
 
-	if err := h.service.DeleteFileByName(filename); err != nil {
+	if file.OwnerID != claims.UserID && claims.Role != "admin" {
+		response.Error(w, http.StatusForbidden, "Forbidden")
+		return
+	}
+
+	if err := h.service.DeleteFileByID(file.ID); err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to delete file from database")
 		return
 	}
 
-	h.node.DeleteFile(filename, hash)
+	h.node.DeleteFile(file.ID, file.Hash)
 
 	response.JSON(w, http.StatusOK, response.SuccessResponse{
 		Success: true,
-		Data:    filename,
+		Data:    file.ID,
 		Message: "File deleted successfully",
 	})
 }
