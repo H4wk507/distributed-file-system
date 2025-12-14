@@ -56,11 +56,10 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 - [x] Zaimplementować wysyłanie pliku równolegle do wszystkich węzłów
 - [x] Zaimplementować zbieranie ACK i zapisywanie metadanych
 
-2. Download pliku
+2. [x] Download pliku
 
 - [x] Zaimplementować request do mastera z nazwą pliku
 - [x] Zaimplementować lookup metadanych - który węzeł ma plik
-- Zaimplementować wybór najbliższego/najmniej obciążonego węzła
 
 3. Re-balancing
 
