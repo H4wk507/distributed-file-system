@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 )
 
 func main() {
+	startedAt := time.Now()
 	cfg := config.Load()
 
 	db, err := database.Init(cfg.DatabaseURL)
@@ -38,6 +40,7 @@ func main() {
 	authMiddleware := middleware.NewAuthMiddleware(cfg.JWTSecret)
 	authHandler := handlers.NewAuthHandler(db, cfg.JWTSecret)
 	fileHandler := handlers.NewFileHandler(db, masterClient)
+	metricsHandler := handlers.NewMetricsHandler(db, masterClient, startedAt)
 
 	router := http.NewServeMux()
 
@@ -53,6 +56,9 @@ func main() {
 	router.Handle("GET /api/nodes", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.GetNodes)))
 	router.Handle("GET /api/nodes/{nodeID}", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.GetNode)))
 	router.Handle("DELETE /api/files/{fileID}/", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.DeleteFile)))
+
+	// System metrics
+	router.Handle("GET /api/metrics/system", authMiddleware.RequireAuth(http.HandlerFunc(metricsHandler.SystemMetrics)))
 
 	handler := corsMiddleware(router)
 
