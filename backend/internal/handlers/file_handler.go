@@ -150,6 +150,58 @@ func (h *FileHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *FileHandler) GetFileMetadata(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	claims := middleware.GetUserFromContext(r.Context())
+	if claims == nil {
+		response.Error(w, http.StatusUnauthorized, "Not authenticated")
+		return
+	}
+
+	fileIDStr := r.PathValue("fileID")
+	if fileIDStr == "" {
+		response.Error(w, http.StatusBadRequest, "'fileID' not present in path")
+		return
+	}
+
+	fileID, err := uuid.Parse(fileIDStr)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid fileID format")
+		return
+	}
+
+	file, err := h.service.GetFileByID(fileID)
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "File not found")
+		return
+	}
+
+	if file.OwnerID != claims.UserID && claims.Role != "admin" {
+		response.Error(w, http.StatusForbidden, "Forbidden")
+		return
+	}
+
+	metadata := dto.FileItem{
+		ID:          file.ID,
+		Filename:    file.Name,
+		Size:        file.Size,
+		ContentType: file.ContentType,
+		Hash:        file.Hash,
+		OwnerID:     file.OwnerID,
+		CreatedAt:   file.CreatedAt,
+		UpdatedAt:   file.UpdatedAt,
+	}
+
+	response.JSON(w, http.StatusOK, response.SuccessResponse{
+		Success: true,
+		Data:    metadata,
+	})
+}
+
 func (h *FileHandler) GetFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		response.Error(w, http.StatusMethodNotAllowed, "Method not allowed")

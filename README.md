@@ -85,10 +85,10 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 1. Podstawowe endpointy REST
 
 - [x] Zaimplementować POST /files/upload - multipart upload
-- Zaimplementować GET /files/{filename} - stream download
-- Zaimplementować GET /files/ - lista plików z paginacją
+- [X] Zaimplementować GET /files/{filename} - stream download
+- [X] Zaimplementować GET /files/ - lista plików z paginacją
 - [x] Zaimplementować DELETE /files/{filename}
-- Zaimplementować GET /files/{filename}/metadata
+- [X] Zaimplementować GET /files/{filename}/metadata
 - Zaimplementować GET /nodes/ - lista węzłów
 - Zaimplementować GET /nodes/{node_id} - szczegóły węzła
 - Zaimplementować GET /metrics/system - metryki systemu
