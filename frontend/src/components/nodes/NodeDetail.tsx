@@ -60,7 +60,7 @@ export function NodeDetail({ node, open, onOpenChange }: NodeDetailProps) {
                 </Badge>
               </SheetTitle>
               <SheetDescription>
-                {node.address}:{node.port}
+                {node.ip}:{node.port}
               </SheetDescription>
             </div>
           </div>
@@ -138,7 +138,7 @@ export function NodeDetail({ node, open, onOpenChange }: NodeDetailProps) {
                 Sieć
               </h4>
               <div className="grid grid-cols-2 gap-3">
-                <StatItem label="Adres IP" value={node.address} />
+                <StatItem label="Adres IP" value={node.ip} />
                 <StatItem label="Port" value={node.port.toString()} />
               </div>
             </div>

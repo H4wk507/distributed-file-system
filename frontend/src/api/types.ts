@@ -39,7 +39,7 @@ export interface UploadResponse {
 
 export interface NodeInfo {
   id: string;
-  address: string;
+  ip: string;
   port: number;
   role: "master" | "storage";
   status: "online" | "offline" | "unknown";

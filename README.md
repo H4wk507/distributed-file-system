@@ -91,7 +91,7 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 - [X] Zaimplementować GET /files/{filename}/metadata
 - [X] Zaimplementować GET /nodes/ - lista węzłów
 - [X] Zaimplementować GET /nodes/{node_id} - szczegóły węzła
-- Zaimplementować GET /metrics/system - metryki systemu
+- [X] Zaimplementować GET /metrics/system - metryki systemu
 
 2. WebSocket real-time
 

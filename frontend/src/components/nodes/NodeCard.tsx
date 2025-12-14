@@ -45,7 +45,7 @@ export function NodeCard({ node, onClick }: NodeCardProps) {
                 {node.id.slice(0, 8)}...
               </p>
               <p className="text-xs text-muted-foreground">
-                {node.address}:{node.port}
+                {node.ip}:{node.port}
               </p>
             </div>
           </div>

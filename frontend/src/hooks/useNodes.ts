@@ -2,7 +2,6 @@ import type { ApiResponse, NodeInfo } from "@/api/types";
 import { useQuery } from "@tanstack/react-query";
 import { useAxios } from "./useAxios";
 
-// TODO: implement those endpoints
 export function useNodes() {
   const axios = useAxios();
 
@@ -16,7 +15,6 @@ export function useNodes() {
   });
 }
 
-// TODO: implement those endpoints
 export function useNode(nodeId: string) {
   const axios = useAxios();
 
