@@ -40,23 +40,19 @@ export function NodeDetail({ node, open, onOpenChange }: NodeDetailProps) {
         <SheetHeader>
           <div className="flex items-center gap-3">
             <div
-              className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-                isMaster
-                  ? "bg-amber-500/10 text-amber-500"
-                  : "bg-primary/10 text-primary"
-              }`}
+              className={`${isMaster ? "text-primary" : "text-muted-foreground"}`}
             >
               {isMaster ? (
-                <Crown className="w-6 h-6" />
+                <Crown className="w-5 h-5" />
               ) : (
-                <Server className="w-6 h-6" />
+                <Server className="w-5 h-5" />
               )}
             </div>
             <div>
               <SheetTitle className="flex items-center gap-2">
-                Węzeł {node.id.slice(0, 8)}
+                węzeł {node.id.slice(0, 8)}
                 <Badge variant={isMaster ? "default" : "secondary"}>
-                  {isMaster ? "Master" : "Storage"}
+                  {isMaster ? "master" : "storage"}
                 </Badge>
               </SheetTitle>
               <SheetDescription>
@@ -69,121 +65,139 @@ export function NodeDetail({ node, open, onOpenChange }: NodeDetailProps) {
         <Tabs defaultValue="overview" className="mt-6">
           <TabsList className="w-full">
             <TabsTrigger value="overview" className="flex-1">
-              Przegląd
+              przegląd
             </TabsTrigger>
             <TabsTrigger value="files" className="flex-1">
-              Pliki
+              pliki
             </TabsTrigger>
             <TabsTrigger value="logs" className="flex-1">
-              Logi
+              logi
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-6 mt-4">
+          <TabsContent value="overview" className="space-y-4 mt-4">
             {/* Status */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium flex items-center gap-2">
-                <Activity className="w-4 h-4" />
-                Status
-              </h4>
-              <div className="grid grid-cols-2 gap-3">
-                <StatItem
-                  label="Stan"
-                  value={
-                    <StatusBadge
-                      status={node.status}
-                    />
-                  }
-                />
-                <StatItem label="Rola" value={isMaster ? "Master" : "Storage"} />
+            <section>
+              <div className="flex items-center gap-2 mb-2">
+                <Activity className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs font-mono uppercase text-muted-foreground">
+                  status
+                </span>
               </div>
-            </div>
+              <div className="border border-border divide-y divide-border">
+                <StatItem
+                  label="stan"
+                  value={<StatusBadge status={node.status} />}
+                />
+                <StatItem
+                  label="rola"
+                  value={isMaster ? "master" : "storage"}
+                />
+              </div>
+            </section>
 
             {/* Storage */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium flex items-center gap-2">
-                <HardDrive className="w-4 h-4" />
-                Przestrzeń dyskowa
-              </h4>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Wykorzystanie</span>
+            <section>
+              <div className="flex items-center gap-2 mb-2">
+                <HardDrive className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs font-mono uppercase text-muted-foreground">
+                  przestrzeń
+                </span>
+              </div>
+              <div className="border border-border p-3 space-y-2">
+                <div className="flex justify-between text-xs font-mono">
+                  <span className="text-muted-foreground">wykorzystanie</span>
                   <span>
                     {formatBytes(node.storage_used)} /{" "}
                     {formatBytes(node.storage_total)}
                   </span>
                 </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div className="h-2 bg-muted border border-border overflow-hidden">
                   <div
                     className={`h-full transition-all ${
                       storagePercent > 90
                         ? "bg-destructive"
                         : storagePercent > 70
-                          ? "bg-amber-500"
-                          : "bg-primary"
+                          ? "bg-primary"
+                          : "bg-success"
                     }`}
                     style={{ width: `${storagePercent}%` }}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground text-right">
-                  {storagePercent}% wykorzystane
+                <p className="text-xs text-muted-foreground font-mono text-right">
+                  {storagePercent}%
                 </p>
               </div>
-            </div>
+            </section>
 
             {/* Network */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium flex items-center gap-2">
-                <Network className="w-4 h-4" />
-                Sieć
-              </h4>
-              <div className="grid grid-cols-2 gap-3">
-                <StatItem label="Adres IP" value={node.ip} />
-                <StatItem label="Port" value={node.port.toString()} />
+            <section>
+              <div className="flex items-center gap-2 mb-2">
+                <Network className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs font-mono uppercase text-muted-foreground">
+                  sieć
+                </span>
               </div>
-            </div>
+              <div className="border border-border divide-y divide-border">
+                <StatItem label="ip" value={node.ip} />
+                <StatItem label="port" value={node.port.toString()} />
+              </div>
+            </section>
 
             {/* Info */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                Informacje
-              </h4>
-              <div className="space-y-2">
-                <StatItem label="ID węzła" value={node.id} mono />
+            <section>
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs font-mono uppercase text-muted-foreground">
+                  info
+                </span>
+              </div>
+              <div className="border border-border divide-y divide-border">
+                <StatItem label="id" value={node.id} mono />
                 <StatItem
-                  label="Ostatni heartbeat"
+                  label="heartbeat"
                   value={new Date(node.last_heartbeat).toLocaleString("pl-PL")}
                 />
               </div>
-            </div>
+            </section>
           </TabsContent>
 
           <TabsContent value="files" className="mt-4">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-medium flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  Pliki na węźle
-                </h4>
-                <Badge variant="secondary">{node.files_count}</Badge>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs font-mono uppercase text-muted-foreground">
+                  pliki na węźle
+                </span>
               </div>
-              <div className="text-center py-8 text-muted-foreground">
-                <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">Lista plików niedostępna</p>
-                <p className="text-xs">Wymaga implementacji backendu</p>
-              </div>
+              <Badge variant="secondary">{node.files_count}</Badge>
+            </div>
+            <div className="border border-border bg-muted/30 text-center py-8">
+              <FileText className="w-5 h-5 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-xs font-mono text-muted-foreground">
+                lista niedostępna
+              </p>
+              <p className="text-xs font-mono text-muted-foreground">
+                wymaga implementacji
+              </p>
             </div>
           </TabsContent>
 
           <TabsContent value="logs" className="mt-4">
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium">Ostatnie logi</h4>
-              <div className="text-center py-8 text-muted-foreground">
-                <Activity className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">Logi niedostępne</p>
-                <p className="text-xs">Wymaga implementacji WebSocket</p>
-              </div>
+            <div className="flex items-center gap-2 mb-2">
+              <Activity className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-xs font-mono uppercase text-muted-foreground">
+                ostatnie logi
+              </span>
+            </div>
+            <div className="border border-border bg-muted/30 text-center py-8">
+              <Activity className="w-5 h-5 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-xs font-mono text-muted-foreground">
+                logi niedostępne
+              </p>
+              <p className="text-xs font-mono text-muted-foreground">
+                wymaga websocket
+              </p>
             </div>
           </TabsContent>
         </Tabs>
@@ -202,41 +216,51 @@ function StatItem({
   mono?: boolean;
 }) {
   return (
-    <div className="space-y-1">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p
-        className={`text-sm ${mono ? "font-mono text-xs break-all" : "font-medium"}`}
+    <div className="flex justify-between items-start gap-4 p-3">
+      <span className="text-xs font-mono uppercase text-muted-foreground">
+        {label}
+      </span>
+      <span
+        className={`text-xs text-right ${mono ? "font-mono break-all" : ""}`}
       >
         {value}
-      </p>
+      </span>
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: NodeInfo["status"] }) {
   const config = {
-    online: { label: "Online", className: "bg-green-500/10 text-green-600" },
-    offline: { label: "Offline", className: "bg-red-500/10 text-red-600" },
-    unknown: { label: "Nieznany", className: "bg-gray-500/10 text-gray-600" },
+    online: {
+      label: "online",
+      className: "border-success text-success bg-success/10",
+    },
+    offline: {
+      label: "offline",
+      className: "border-destructive text-destructive bg-destructive/10",
+    },
+    unknown: {
+      label: "unknown",
+      className: "border-muted-foreground text-muted-foreground bg-muted",
+    },
   };
 
   const { label, className } = config[status];
 
   return (
     <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${className}`}
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono uppercase border ${className}`}
     >
       <span
-        className={`w-1.5 h-1.5 rounded-full ${
+        className={`w-1.5 h-1.5 ${
           status === "online"
-            ? "bg-green-500"
+            ? "bg-success"
             : status === "offline"
-              ? "bg-red-500"
-              : "bg-gray-500"
+              ? "bg-destructive"
+              : "bg-muted-foreground"
         }`}
       />
       {label}
     </span>
   );
 }
-

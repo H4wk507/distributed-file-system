@@ -1,13 +1,6 @@
 import type { ApiResponse } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Form,
   FormControl,
   FormField,
@@ -19,14 +12,14 @@ import { Input } from "@/components/ui/input";
 import { useAxios } from "@/hooks/useAxios";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Server } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 
 const loginSchema = z.object({
-  email: z.email("Nieprawidłowy adres email"),
-  password: z.string().min(1, "Hasło jest wymagane"),
+  email: z.email("nieprawidłowy email"),
+  password: z.string().min(1, "hasło wymagane"),
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
@@ -55,7 +48,7 @@ export default function LoginPage() {
     },
     onError: () => {
       form.setError("root", {
-        message: "Nieprawidłowy email lub hasło",
+        message: "nieprawidłowy email lub hasło",
       });
     },
   });
@@ -65,30 +58,32 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center mb-4">
-            <Server className="w-6 h-6 text-primary-foreground" />
-          </div>
-          <h1 className="text-xl font-semibold">Rozproszony System Plików</h1>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+      <div className="w-full max-w-xs">
+        {/* Header - surowy styl terminala */}
+        <div className="mb-8 text-center">
+          <div className="font-mono text-primary text-lg mb-2">[RSP]</div>
+          <h1 className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+            rozproszony system plików
+          </h1>
         </div>
 
-        <Card>
-          <CardHeader className="text-center">
-            <CardTitle>Zaloguj się</CardTitle>
-            <CardDescription>
-              Wprowadź swoje dane, aby kontynuować
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+        {/* Form container - bez cieni, prostokątny */}
+        <div className="border border-border bg-card">
+          <div className="border-b border-border px-4 py-2">
+            <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+              :: logowanie ::
+            </span>
+          </div>
+
+          <div className="p-4">
             <Form {...form}>
               <form
                 onSubmit={form.handleSubmit(onSubmit)}
                 className="space-y-4"
               >
                 {form.formState.errors.root && (
-                  <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm text-center">
+                  <div className="p-2 border border-destructive bg-destructive/10 text-destructive text-xs font-mono">
                     {form.formState.errors.root.message}
                   </div>
                 )}
@@ -98,11 +93,11 @@ export default function LoginPage() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email</FormLabel>
+                      <FormLabel>email</FormLabel>
                       <FormControl>
                         <Input
                           type="email"
-                          placeholder="jan@example.com"
+                          placeholder="user@example.com"
                           autoComplete="email"
                           {...field}
                         />
@@ -117,7 +112,7 @@ export default function LoginPage() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Hasło</FormLabel>
+                      <FormLabel>hasło</FormLabel>
                       <FormControl>
                         <Input
                           type="password"
@@ -137,27 +132,24 @@ export default function LoginPage() {
                 >
                   {loginUser.isPending ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Logowanie...
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      logowanie...
                     </>
                   ) : (
-                    "Zaloguj się"
+                    "zaloguj"
                   )}
                 </Button>
               </form>
             </Form>
+          </div>
+        </div>
 
-            <p className="mt-6 text-center text-sm text-muted-foreground">
-              Nie masz konta?{" "}
-              <Link
-                to="/register"
-                className="text-foreground hover:underline font-medium"
-              >
-                Zarejestruj się
-              </Link>
-            </p>
-          </CardContent>
-        </Card>
+        <p className="mt-4 text-center text-xs text-muted-foreground font-mono">
+          brak konta?{" "}
+          <Link to="/register" className="text-primary hover:underline">
+            zarejestruj się
+          </Link>
+        </p>
       </div>
     </div>
   );

@@ -25,8 +25,13 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Loader2 className="w-5 h-5 animate-spin text-primary mx-auto" />
+          <span className="text-xs font-mono text-muted-foreground mt-2 block">
+            ładowanie...
+          </span>
+        </div>
       </div>
     );
   }

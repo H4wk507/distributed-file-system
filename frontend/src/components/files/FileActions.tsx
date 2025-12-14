@@ -48,83 +48,96 @@ export function FileActions({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <MoreHorizontal className="h-4 w-4" />
+          <Button variant="ghost" size="icon" className="h-7 w-7">
+            <MoreHorizontal className="h-3.5 w-3.5" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => onDownload(file.id, file.filename)}>
-            <Download className="mr-2 h-4 w-4" />
-            Pobierz
+          <DropdownMenuItem
+            onClick={() => onDownload(file.id, file.filename)}
+            className="text-xs"
+          >
+            <Download className="mr-2 h-3.5 w-3.5" />
+            pobierz
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setShowInfoDialog(true)}>
-            <Info className="mr-2 h-4 w-4" />
-            Szczegóły
+          <DropdownMenuItem
+            onClick={() => setShowInfoDialog(true)}
+            className="text-xs"
+          >
+            <Info className="mr-2 h-3.5 w-3.5" />
+            szczegóły
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={() => setShowDeleteDialog(true)}
-            className="text-destructive focus:text-destructive"
+            className="text-destructive focus:text-destructive text-xs"
             disabled={isDeleting}
           >
-            <Trash2 className="mr-2 h-4 w-4" />
-            Usuń
+            <Trash2 className="mr-2 h-3.5 w-3.5" />
+            usuń
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Delete Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Usuń plik</AlertDialogTitle>
-            <AlertDialogDescription>
-              Czy na pewno chcesz usunąć plik "{file.filename}"? Ta operacja
-              jest nieodwracalna i usunie wszystkie repliki pliku.
+            <AlertDialogTitle>usuń plik</AlertDialogTitle>
+            <AlertDialogDescription className="font-mono">
+              usunąć "{file.filename}"? operacja nieodwracalna.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Anuluj</AlertDialogCancel>
+            <AlertDialogCancel className="text-xs">anuluj</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 onDelete(file.id);
                 setShowDeleteDialog(false);
               }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/80 text-xs"
             >
-              Usuń
+              usuń
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Info Dialog */}
       <Dialog open={showInfoDialog} onOpenChange={setShowInfoDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Szczegóły pliku</DialogTitle>
-            <DialogDescription>
-              Informacje o pliku i jego replikach
+            <DialogTitle>szczegóły pliku</DialogTitle>
+            <DialogDescription className="font-mono">
+              informacje o pliku i replikach
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <InfoRow label="Nazwa" value={file.filename} />
-            <InfoRow label="Rozmiar" value={formatBytes(file.size)} />
-            <InfoRow label="Typ" value={file.content_type} />
-            <InfoRow label="Hash" value={file.hash} mono />
-            <InfoRow label="Utworzono" value={formatDate(file.created_at)} />
+          <div className="border border-border divide-y divide-border">
+            <InfoRow label="nazwa" value={file.filename} />
+            <InfoRow label="rozmiar" value={formatBytes(file.size)} />
+            <InfoRow label="typ" value={file.content_type} />
+            <InfoRow label="hash" value={file.hash} mono />
+            <InfoRow label="utworzono" value={formatDate(file.created_at)} />
             <InfoRow
-              label="Zmodyfikowano"
+              label="zmodyfikowano"
               value={formatDate(file.updated_at)}
             />
-            <div className="space-y-1">
-              <span className="text-sm font-medium">Repliki</span>
-              <div className="flex flex-wrap gap-2">
+            <div className="p-3">
+              <span className="text-xs font-mono uppercase text-muted-foreground">
+                repliki
+              </span>
+              <div className="flex flex-wrap gap-1 mt-1.5">
                 {file.replicas?.map((nodeId, i) => (
                   <span
                     key={i}
-                    className="px-2 py-1 text-xs bg-muted rounded-md font-mono"
+                    className="px-2 py-0.5 text-xs bg-muted border border-border font-mono"
                   >
                     {nodeId}
                   </span>
                 )) || (
-                  <span className="text-sm text-muted-foreground">Brak</span>
+                  <span className="text-xs text-muted-foreground font-mono">
+                    brak
+                  </span>
                 )}
               </div>
             </div>
@@ -145,12 +158,12 @@ function InfoRow({
   mono?: boolean;
 }) {
   return (
-    <div className="flex justify-between items-start gap-4">
-      <span className="text-sm font-medium shrink-0">{label}</span>
+    <div className="flex justify-between items-start gap-4 p-3">
+      <span className="text-xs font-mono uppercase text-muted-foreground shrink-0">
+        {label}
+      </span>
       <span
-        className={`text-sm text-muted-foreground text-right break-all ${
-          mono ? "font-mono text-xs" : ""
-        }`}
+        className={`text-xs text-right break-all ${mono ? "font-mono" : ""}`}
       >
         {value}
       </span>

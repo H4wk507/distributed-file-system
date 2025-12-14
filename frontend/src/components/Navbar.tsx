@@ -13,9 +13,9 @@ import {
 } from "./ui/dropdown-menu";
 
 const navLinks = [
-  { href: "/", label: "Pliki", icon: Files },
-  { href: "/nodes", label: "Węzły", icon: Server },
-  { href: "/monitoring", label: "Monitoring", icon: Activity },
+  { href: "/", label: "pliki", icon: Files },
+  { href: "/nodes", label: "węzły", icon: Server },
+  { href: "/monitoring", label: "monitoring", icon: Activity },
 ];
 
 export function Navbar() {
@@ -24,55 +24,58 @@ export function Navbar() {
   const location = useLocation();
 
   return (
-    <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="flex items-center justify-between h-14">
+    <header className="border-b border-border bg-card sticky top-0 z-50">
+      <div className="px-4 sm:px-6">
+        <div className="flex items-center justify-between h-12">
+          {/* Logo - asymetryczny, surowy */}
           <Link
             to="/"
-            className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
+            className="flex items-center gap-2 hover:text-primary transition-colors"
           >
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Server className="w-4 h-4 text-primary-foreground" />
-            </div>
-            <span className="font-semibold tracking-tight">RSP</span>
+            <span className="text-primary font-mono text-sm">[RSP]</span>
+            <span className="hidden sm:inline text-xs text-muted-foreground font-mono">
+              rozproszony system plików
+            </span>
           </Link>
-          <nav className="hidden sm:flex items-center gap-1">
-            {navLinks.map((link) => {
+
+          {/* Nawigacja - styl terminala */}
+          <nav className="hidden sm:flex items-center">
+            {navLinks.map((link, idx) => {
               const isActive = location.pathname === link.href;
               return (
                 <Link
                   key={link.href}
                   to={link.href}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono uppercase tracking-wide transition-colors border-l border-border ${
                     isActive
-                      ? "bg-accent text-accent-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                  }`}
+                      ? "text-primary bg-primary/10"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  } ${idx === navLinks.length - 1 ? "border-r" : ""}`}
                 >
-                  <link.icon className="w-4 h-4" />
+                  <link.icon className="w-3.5 h-3.5" />
                   {link.label}
                 </Link>
               );
             })}
           </nav>
 
-          <div className="flex items-center gap-2">
+          {/* User menu - minimalny */}
+          <div className="flex items-center gap-3">
+            <span className="hidden md:inline text-xs text-muted-foreground font-mono">
+              user: {user?.username}
+            </span>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="gap-2 px-2 sm:px-3">
-                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
-                    <User className="w-4 h-4 text-primary" />
-                  </div>
-                  <span className="hidden sm:inline text-sm font-medium">
-                    {user?.username}
-                  </span>
+                <Button variant="ghost" className="gap-1.5 px-2 h-8">
+                  <User className="w-4 h-4" />
+                  <span className="sm:hidden text-xs">{user?.username}</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuLabel>
-                  <div className="flex flex-col">
-                    <span>{user?.username}</span>
-                    <span className="text-xs font-normal text-muted-foreground">
+                  <div className="flex flex-col font-mono">
+                    <span className="text-xs">{user?.username}</span>
+                    <span className="text-xs text-muted-foreground">
                       {user?.email}
                     </span>
                   </div>
@@ -81,8 +84,11 @@ export function Navbar() {
                 <div className="sm:hidden">
                   {navLinks.map((link) => (
                     <DropdownMenuItem key={link.href} asChild>
-                      <Link to={link.href} className="flex items-center gap-2">
-                        <link.icon className="w-4 h-4" />
+                      <Link
+                        to={link.href}
+                        className="flex items-center gap-2 text-xs"
+                      >
+                        <link.icon className="w-3.5 h-3.5" />
                         {link.label}
                       </Link>
                     </DropdownMenuItem>
@@ -90,17 +96,17 @@ export function Navbar() {
                   <DropdownMenuSeparator />
                 </div>
 
-                <DropdownMenuItem>
-                  <Settings className="w-4 h-4 mr-2" />
-                  Ustawienia
+                <DropdownMenuItem className="text-xs">
+                  <Settings className="w-3.5 h-3.5 mr-2" />
+                  ustawienia
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={logout}
-                  className="text-destructive focus:text-destructive"
+                  className="text-destructive focus:text-destructive text-xs"
                 >
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Wyloguj się
+                  <LogOut className="w-3.5 h-3.5 mr-2" />
+                  wyloguj
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

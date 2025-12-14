@@ -1,30 +1,35 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #fafafa;
-  --color-foreground: #0a0a0a;
-  --color-card: #ffffff;
-  --color-card-foreground: #0a0a0a;
-  --color-primary: #0a0a0a;
-  --color-primary-foreground: #fafafa;
-  --color-secondary: #f5f5f5;
-  --color-secondary-foreground: #171717;
-  --color-muted: #f5f5f5;
-  --color-muted-foreground: #737373;
-  --color-accent: #f5f5f5;
-  --color-accent-foreground: #171717;
-  --color-destructive: #ef4444;
-  --color-destructive-foreground: #fafafa;
-  --color-border: #e5e5e5;
-  --color-input: #e5e5e5;
-  --color-ring: #0a0a0a;
+  /* GRUVBOX DARK PALETTE */
+  --color-background: #282828;
+  --color-foreground: #ebdbb2;
+  --color-card: #3c3836;
+  --color-card-foreground: #ebdbb2;
+  --color-primary: #fabd2f;
+  --color-primary-foreground: #282828;
+  --color-secondary: #3c3836;
+  --color-secondary-foreground: #ebdbb2;
+  --color-muted: #3c3836;
+  --color-muted-foreground: #a89984;
+  --color-accent: #fabd2f;
+  --color-accent-foreground: #282828;
+  --color-destructive: #fb4934;
+  --color-destructive-foreground: #282828;
+  --color-success: #b8bb26;
+  --color-border: #504945;
+  --color-input: #504945;
+  --color-ring: #fabd2f;
 
+  /* MONOSPACE - narzędziowy, techniczny */
   --font-family-sans:
-    -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto,
-    sans-serif;
-  --font-family-mono: "SF Mono", ui-monospace, monospace;
+    "IBM Plex Mono", "JetBrains Mono", "Fira Code", ui-monospace,
+    "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  --font-family-mono:
+    "IBM Plex Mono", "JetBrains Mono", "Fira Code", ui-monospace, monospace;
 
-  --radius: 0.625rem;
+  /* ZERO rounded corners */
+  --radius: 0;
 }
 
 * {
@@ -35,11 +40,76 @@ body {
   background-color: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-family-sans);
-  -webkit-font-smoothing: antialiased;
+  font-size: 13px;
+  line-height: 1.6;
+  -webkit-font-smoothing: auto;
   margin: 0;
   min-height: 100vh;
 }
 
 #root {
   min-height: 100vh;
+}
+
+/* Usuń wszystkie cienie i zaokrąglenia */
+*,
+*::before,
+*::after {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Scrollbar w stylu terminala */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #282828;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #504945;
+  border: 1px solid #3c3836;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #665c54;
+}
+
+/* Selekcja tekstu */
+::selection {
+  background: #fabd2f;
+  color: #282828;
+}
+
+/* Link w stylu terminala */
+a {
+  color: #83a598;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Focus - prostokątny, wyraźny */
+:focus-visible {
+  outline: 2px solid #fabd2f !important;
+  outline-offset: 1px !important;
+}
+
+/* Sonner toasts - gruvbox */
+[data-sonner-toaster] {
+  --normal-bg: #3c3836 !important;
+  --normal-border: #504945 !important;
+  --normal-text: #ebdbb2 !important;
+  --success-bg: #3c3836 !important;
+  --success-border: #b8bb26 !important;
+  --success-text: #b8bb26 !important;
+  --error-bg: #3c3836 !important;
+  --error-border: #fb4934 !important;
+  --error-text: #fb4934 !important;
+  font-family: var(--font-family-mono) !important;
 }

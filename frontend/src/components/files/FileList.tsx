@@ -40,15 +40,15 @@ import { FileActions } from "./FileActions";
 import { FilePreview } from "./FilePreview";
 
 const fileIcons: Record<FileType, React.ReactNode> = {
-  image: <FileImage className="w-5 h-5 text-pink-500" />,
-  video: <FileVideo className="w-5 h-5 text-purple-500" />,
-  audio: <FileAudio className="w-5 h-5 text-green-500" />,
-  pdf: <FileText className="w-5 h-5 text-red-500" />,
-  archive: <Archive className="w-5 h-5 text-yellow-600" />,
-  doc: <FileText className="w-5 h-5 text-blue-500" />,
-  spreadsheet: <FileSpreadsheet className="w-5 h-5 text-emerald-500" />,
-  text: <FileText className="w-5 h-5 text-gray-500" />,
-  file: <File className="w-5 h-5 text-muted-foreground" />,
+  image: <FileImage className="w-4 h-4 text-primary" />,
+  video: <FileVideo className="w-4 h-4 text-primary" />,
+  audio: <FileAudio className="w-4 h-4 text-success" />,
+  pdf: <FileText className="w-4 h-4 text-destructive" />,
+  archive: <Archive className="w-4 h-4 text-primary" />,
+  doc: <FileText className="w-4 h-4 text-muted-foreground" />,
+  spreadsheet: <FileSpreadsheet className="w-4 h-4 text-success" />,
+  text: <FileText className="w-4 h-4 text-muted-foreground" />,
+  file: <File className="w-4 h-4 text-muted-foreground" />,
 };
 
 interface FileListProps {
@@ -88,14 +88,14 @@ export function FileList({
             onCheckedChange={(value) =>
               table.toggleAllPageRowsSelected(!!value)
             }
-            aria-label="Zaznacz wszystkie"
+            aria-label="zaznacz wszystkie"
           />
         ),
         cell: ({ row }) => (
           <Checkbox
             checked={row.getIsSelected()}
             onCheckedChange={(value) => row.toggleSelected(!!value)}
-            aria-label="Zaznacz wiersz"
+            aria-label="zaznacz"
           />
         ),
         enableSorting: false,
@@ -106,10 +106,10 @@ export function FileList({
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="-ml-3"
+            className="-ml-3 text-xs"
           >
-            Nazwa
-            <ArrowUpDown className="ml-2 h-4 w-4" />
+            nazwa
+            <ArrowUpDown className="ml-1 h-3 w-3" />
           </Button>
         ),
         cell: ({ row }) => {
@@ -118,10 +118,10 @@ export function FileList({
           return (
             <button
               onClick={() => setPreviewFile(file)}
-              className="flex items-center gap-3 hover:underline text-left"
+              className="flex items-center gap-2 hover:text-primary text-left"
             >
               {fileIcons[iconType]}
-              <span className="font-medium truncate max-w-[300px]">
+              <span className="font-mono text-xs truncate max-w-[240px]">
                 {file.filename}
               </span>
             </button>
@@ -134,13 +134,17 @@ export function FileList({
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="-ml-3"
+            className="-ml-3 text-xs"
           >
-            Rozmiar
-            <ArrowUpDown className="ml-2 h-4 w-4" />
+            rozmiar
+            <ArrowUpDown className="ml-1 h-3 w-3" />
           </Button>
         ),
-        cell: ({ row }) => formatBytes(row.original.size),
+        cell: ({ row }) => (
+          <span className="font-mono text-xs text-muted-foreground">
+            {formatBytes(row.original.size)}
+          </span>
+        ),
       },
       {
         accessorKey: "created_at",
@@ -148,19 +152,23 @@ export function FileList({
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="-ml-3"
+            className="-ml-3 text-xs"
           >
-            Data
-            <ArrowUpDown className="ml-2 h-4 w-4" />
+            data
+            <ArrowUpDown className="ml-1 h-3 w-3" />
           </Button>
         ),
-        cell: ({ row }) => formatDate(row.original.created_at),
+        cell: ({ row }) => (
+          <span className="font-mono text-xs text-muted-foreground">
+            {formatDate(row.original.created_at)}
+          </span>
+        ),
       },
       {
         accessorKey: "replicas",
-        header: "Repliki",
+        header: () => <span className="text-xs">repliki</span>,
         cell: ({ row }) => (
-          <span className="text-muted-foreground">
+          <span className="font-mono text-xs text-muted-foreground">
             {row.original.replicas_count}
           </span>
         ),
@@ -203,25 +211,27 @@ export function FileList({
   const selectedCount = Object.keys(rowSelection).length;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+    <div>
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-3 p-3 border-b border-border bg-muted/30">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
-            placeholder="Szukaj plików..."
+            placeholder="szukaj..."
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
-            className="pl-9"
+            className="pl-7 h-7 text-xs"
           />
         </div>
         {selectedCount > 0 && (
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">
-              Zaznaczono: {selectedCount}
+            <span className="text-xs text-muted-foreground font-mono">
+              [{selectedCount}]
             </span>
             <Button
               variant="destructive"
               size="sm"
+              className="h-7 text-xs"
               onClick={() => {
                 const selectedIds = table
                   .getSelectedRowModel()
@@ -231,87 +241,89 @@ export function FileList({
               }}
               disabled={isDeleting}
             >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Usuń zaznaczone
+              <Trash2 className="mr-1 h-3 w-3" />
+              usuń
             </Button>
           </div>
         )}
       </div>
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
-                  </TableHead>
+
+      {/* Table */}
+      <Table>
+        <TableHeader>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <TableRow key={headerGroup.id}>
+              {headerGroup.headers.map((header) => (
+                <TableHead key={header.id}>
+                  {header.isPlaceholder
+                    ? null
+                    : flexRender(
+                        header.column.columnDef.header,
+                        header.getContext(),
+                      )}
+                </TableHead>
+              ))}
+            </TableRow>
+          ))}
+        </TableHeader>
+        <TableBody>
+          {table.getRowModel().rows?.length ? (
+            table.getRowModel().rows.map((row) => (
+              <TableRow
+                key={row.id}
+                data-state={row.getIsSelected() && "selected"}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
                 ))}
               </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  Brak plików
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+            ))
+          ) : (
+            <TableRow>
+              <TableCell
+                colSpan={columns.length}
+                className="h-20 text-center text-xs text-muted-foreground font-mono"
+              >
+                brak plików
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+
+      {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Strona {page} z {totalPages}
+        <div className="flex items-center justify-between p-3 border-t border-border bg-muted/30">
+          <p className="text-xs text-muted-foreground font-mono">
+            strona {page}/{totalPages}
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <Button
               variant="outline"
               size="sm"
+              className="h-7 text-xs"
               onClick={() => onPageChange(page - 1)}
               disabled={page <= 1}
             >
-              <ChevronLeft className="h-4 w-4" />
-              Poprzednia
+              <ChevronLeft className="h-3 w-3 mr-1" />
+              prev
             </Button>
             <Button
               variant="outline"
               size="sm"
+              className="h-7 text-xs"
               onClick={() => onPageChange(page + 1)}
               disabled={page >= totalPages}
             >
-              Następna
-              <ChevronRight className="h-4 w-4" />
+              next
+              <ChevronRight className="h-3 w-3 ml-1" />
             </Button>
           </div>
         </div>
       )}
+
       <FilePreview
         file={previewFile}
         open={!!previewFile}

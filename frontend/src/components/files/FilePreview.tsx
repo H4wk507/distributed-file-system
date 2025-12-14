@@ -20,15 +20,15 @@ import {
 } from "lucide-react";
 
 const fileIcons: Record<FileType, React.ReactNode> = {
-  image: <FileImage className="w-16 h-16 text-pink-500" />,
-  video: <FileVideo className="w-16 h-16 text-purple-500" />,
-  audio: <FileAudio className="w-16 h-16 text-green-500" />,
-  pdf: <FileText className="w-16 h-16 text-red-500" />,
-  archive: <Archive className="w-16 h-16 text-yellow-600" />,
-  doc: <FileText className="w-16 h-16 text-blue-500" />,
-  spreadsheet: <FileSpreadsheet className="w-16 h-16 text-emerald-500" />,
-  text: <FileText className="w-16 h-16 text-gray-500" />,
-  file: <File className="w-16 h-16 text-muted-foreground" />,
+  image: <FileImage className="w-12 h-12 text-primary" />,
+  video: <FileVideo className="w-12 h-12 text-primary" />,
+  audio: <FileAudio className="w-12 h-12 text-success" />,
+  pdf: <FileText className="w-12 h-12 text-destructive" />,
+  archive: <Archive className="w-12 h-12 text-primary" />,
+  doc: <FileText className="w-12 h-12 text-muted-foreground" />,
+  spreadsheet: <FileSpreadsheet className="w-12 h-12 text-success" />,
+  text: <FileText className="w-12 h-12 text-muted-foreground" />,
+  file: <File className="w-12 h-12 text-muted-foreground" />,
 };
 
 interface FilePreviewProps {
@@ -58,22 +58,24 @@ export function FilePreview({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle className="truncate pr-8">{file.filename}</DialogTitle>
+          <DialogTitle className="truncate pr-8 font-mono text-xs">
+            {file.filename}
+          </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 overflow-auto min-h-0">
+        <div className="flex-1 overflow-auto min-h-0 border border-border">
           {isImage && previewUrl && (
-            <div className="flex items-center justify-center bg-muted/30 rounded-lg p-4">
+            <div className="flex items-center justify-center bg-muted/30 p-4">
               <img
                 src={previewUrl}
                 alt={file.filename}
-                className="max-w-full max-h-[60vh] object-contain rounded"
+                className="max-w-full max-h-[55vh] object-contain"
               />
             </div>
           )}
 
           {isPdf && previewUrl && (
-            <div className="w-full h-[60vh] bg-muted/30 rounded-lg overflow-hidden">
+            <div className="w-full h-[55vh] bg-muted/30 overflow-hidden">
               <iframe
                 src={previewUrl}
                 className="w-full h-full"
@@ -83,61 +85,64 @@ export function FilePreview({
           )}
 
           {isVideo && previewUrl && (
-            <div className="flex items-center justify-center bg-muted/30 rounded-lg p-4">
+            <div className="flex items-center justify-center bg-muted/30 p-4">
               <video
                 src={previewUrl}
                 controls
-                className="max-w-full max-h-[60vh] rounded"
+                className="max-w-full max-h-[55vh]"
               >
-                Twoja przeglądarka nie obsługuje odtwarzania wideo.
+                brak obsługi wideo
               </video>
             </div>
           )}
 
           {isAudio && previewUrl && (
-            <div className="flex flex-col items-center justify-center bg-muted/30 rounded-lg p-8 gap-4">
+            <div className="flex flex-col items-center justify-center bg-muted/30 p-8 gap-4">
               {fileIcons[fileType]}
               <audio src={previewUrl} controls className="w-full max-w-md">
-                Twoja przeglądarka nie obsługuje odtwarzania audio.
+                brak obsługi audio
               </audio>
             </div>
           )}
 
           {!isImage && !isPdf && !isVideo && !isAudio && (
-            <div className="flex flex-col items-center justify-center bg-muted/30 rounded-lg p-12 gap-4">
+            <div className="flex flex-col items-center justify-center bg-muted/30 p-12 gap-4">
               {fileIcons[fileType]}
-              <div className="text-center">
-                <p className="font-medium">{file.filename}</p>
-                <p className="text-sm text-muted-foreground">
+              <div className="text-center font-mono">
+                <p className="text-sm">{file.filename}</p>
+                <p className="text-xs text-muted-foreground">
                   {formatBytes(file.size)} • {file.content_type}
                 </p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Podgląd niedostępny dla tego typu pliku
+                <p className="text-xs text-muted-foreground mt-2">
+                  podgląd niedostępny
                 </p>
               </div>
             </div>
           )}
 
           {(isImage || isPdf || isVideo || isAudio) && !previewUrl && (
-            <div className="flex flex-col items-center justify-center bg-muted/30 rounded-lg p-12 gap-4">
+            <div className="flex flex-col items-center justify-center bg-muted/30 p-12 gap-4">
               {fileIcons[fileType]}
-              <div className="text-center">
-                <p className="font-medium">{file.filename}</p>
-                <p className="text-sm text-muted-foreground">
+              <div className="text-center font-mono">
+                <p className="text-sm">{file.filename}</p>
+                <p className="text-xs text-muted-foreground">
                   {formatBytes(file.size)}
                 </p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Pobierz plik, aby go wyświetlić
+                <p className="text-xs text-muted-foreground mt-2">
+                  pobierz aby wyświetlić
                 </p>
               </div>
             </div>
           )}
         </div>
 
-        <div className="flex justify-end pt-4 border-t">
-          <Button onClick={() => onDownload(file.id, file.filename)}>
-            <Download className="w-4 h-4 mr-2" />
-            Pobierz
+        <div className="flex justify-end pt-3 border-t border-border">
+          <Button
+            onClick={() => onDownload(file.id, file.filename)}
+            className="text-xs"
+          >
+            <Download className="w-3.5 h-3.5 mr-1.5" />
+            pobierz
           </Button>
         </div>
       </DialogContent>

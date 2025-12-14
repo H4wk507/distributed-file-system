@@ -1,14 +1,12 @@
 import { FileList } from "@/components/files/FileList";
 import { FileUploader } from "@/components/files/FileUploader";
 import { MainLayout } from "@/components/MainLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useFileDownload } from "@/hooks/useFileDownload";
 import { useDeleteFile, useFiles } from "@/hooks/useFiles";
 import { formatBytes } from "@/lib/formatters";
 import {
   CheckCircle,
-  Download,
   FileText,
   HardDrive,
   Loader2,
@@ -48,83 +46,87 @@ export default function HomePage() {
 
   return (
     <MainLayout>
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold">Pliki</h1>
-        <p className="text-muted-foreground mt-1">
-          Zarządzaj swoimi plikami w systemie rozproszonym
+      {/* Nagłówek - surowy styl */}
+      <div className="mb-6 pb-4 border-b border-border">
+        <h1 className="text-sm font-mono uppercase tracking-wide text-primary">
+          :: pliki ::
+        </h1>
+        <p className="text-xs text-muted-foreground font-mono mt-1">
+          zarządzaj plikami w systemie rozproszonym
         </p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-        <StatCard
-          icon={<FileText className="w-5 h-5" />}
-          label="Pliki"
+      {/* Stats - asymetryczny grid, bez kart */}
+      <div className="grid grid-cols-3 gap-px bg-border mb-6">
+        <StatBlock
+          icon={<FileText className="w-4 h-4" />}
+          label="pliki"
           value={total.toString()}
         />
-        <StatCard
-          icon={<HardDrive className="w-5 h-5" />}
-          label="Przestrzeń"
+        <StatBlock
+          icon={<HardDrive className="w-4 h-4" />}
+          label="przestrzeń"
           value={formatBytes(totalSize)}
         />
-        <StatCard
-          icon={<Server className="w-5 h-5" />}
-          label="Węzły"
+        <StatBlock
+          icon={<Server className="w-4 h-4" />}
+          label="węzły"
           value="3"
         />
       </div>
 
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle className="text-base">Prześlij pliki</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <FileUploader />
-        </CardContent>
-      </Card>
+      {/* Upload - prostszy */}
+      <section className="mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+            [upload]
+          </span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+        <FileUploader />
+      </section>
 
+      {/* Downloads */}
       {downloads.length > 0 && (
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Download className="w-4 h-4" />
-              Pobieranie
-              {activeDownloads.length > 0 && ` (${activeDownloads.length})`}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        <section className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+              [pobieranie{" "}
+              {activeDownloads.length > 0 ? `(${activeDownloads.length})` : ""}]
+            </span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+          <div className="border border-border divide-y divide-border">
             {downloads.map((dl) => (
-              <div
-                key={dl.id}
-                className="flex items-center gap-4 p-3 bg-muted/50 rounded-lg"
-              >
+              <div key={dl.id} className="flex items-center gap-4 p-3 bg-card">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{dl.fileName}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Progress value={dl.progress} className="flex-1 h-2" />
-                    <span className="text-xs text-muted-foreground w-12 text-right">
+                  <p className="text-xs font-mono truncate">{dl.fileName}</p>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <Progress value={dl.progress} className="flex-1 h-1" />
+                    <span className="text-xs font-mono text-muted-foreground w-10 text-right">
                       {dl.progress}%
                     </span>
                   </div>
                   {dl.status === "error" && (
-                    <p className="text-xs text-destructive mt-1">
-                      Błąd: {dl.error}
+                    <p className="text-xs text-destructive font-mono mt-1">
+                      err: {dl.error}
                     </p>
                   )}
                 </div>
                 <div className="flex items-center gap-1">
                   {dl.status === "completed" && (
-                    <CheckCircle className="w-5 h-5 text-green-500" />
+                    <CheckCircle className="w-4 h-4 text-success" />
                   )}
                   {dl.status === "error" && (
-                    <XCircle className="w-5 h-5 text-destructive" />
+                    <XCircle className="w-4 h-4 text-destructive" />
                   )}
                   {(dl.status === "downloading" || dl.status === "pending") && (
                     <button
                       onClick={() => cancelDownload(dl.id)}
-                      className="p-1 hover:bg-muted rounded"
+                      className="p-1 hover:bg-muted"
                       title="Anuluj"
                     >
-                      <X className="w-4 h-4 text-muted-foreground" />
+                      <X className="w-3.5 h-3.5 text-muted-foreground" />
                     </button>
                   )}
                   {(dl.status === "completed" ||
@@ -132,32 +134,41 @@ export default function HomePage() {
                     dl.status === "cancelled") && (
                     <button
                       onClick={() => clearDownload(dl.id)}
-                      className="p-1 hover:bg-muted rounded"
+                      className="p-1 hover:bg-muted"
                       title="Usuń"
                     >
-                      <X className="w-4 h-4 text-muted-foreground" />
+                      <X className="w-3.5 h-3.5 text-muted-foreground" />
                     </button>
                   )}
                 </div>
               </div>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Twoje pliki</CardTitle>
-        </CardHeader>
-        <CardContent>
+      {/* File list */}
+      <section>
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+            [lista plików]
+          </span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+        <div className="border border-border">
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            <div className="flex items-center justify-center py-12 bg-card">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-xs font-mono text-muted-foreground">
+                ładowanie...
+              </span>
             </div>
           ) : isError ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <XCircle className="w-8 h-8 mx-auto mb-3 opacity-50 text-destructive" />
-              <p className="text-sm">Błąd ładowania plików</p>
+            <div className="text-center py-12 bg-card">
+              <XCircle className="w-5 h-5 mx-auto mb-2 text-destructive" />
+              <p className="text-xs font-mono text-destructive">
+                błąd ładowania plików
+              </p>
             </div>
           ) : files.length > 0 ? (
             <FileList
@@ -170,18 +181,20 @@ export default function HomePage() {
               isDeleting={deleteFileMutation.isPending}
             />
           ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              <FileText className="w-8 h-8 mx-auto mb-3 opacity-50" />
-              <p className="text-sm">Brak plików</p>
+            <div className="text-center py-12 bg-card">
+              <FileText className="w-5 h-5 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-xs font-mono text-muted-foreground">
+                brak plików
+              </p>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </MainLayout>
   );
 }
 
-function StatCard({
+function StatBlock({
   icon,
   label,
   value,
@@ -191,16 +204,12 @@ function StatCard({
   value: string;
 }) {
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <div className="text-muted-foreground">{icon}</div>
-          <div>
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-lg font-semibold">{value}</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="bg-card p-3">
+      <div className="flex items-center gap-2 text-muted-foreground mb-1">
+        {icon}
+        <span className="text-xs font-mono uppercase">{label}</span>
+      </div>
+      <p className="text-lg font-mono text-primary">{value}</p>
+    </div>
   );
 }

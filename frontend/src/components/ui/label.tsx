@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
-import { forwardRef } from "react";
 import type { LabelHTMLAttributes } from "react";
+import { forwardRef } from "react";
 
 const Label = forwardRef<
   HTMLLabelElement,
@@ -10,7 +10,7 @@ const Label = forwardRef<
     <label
       ref={ref}
       className={cn(
-        "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+        "text-xs font-medium uppercase tracking-wide text-muted-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-40",
         className,
       )}
       {...props}
