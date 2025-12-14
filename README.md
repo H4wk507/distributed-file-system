@@ -20,35 +20,17 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 ## TODO:
 
-### WYKRYWANIE ZAKLESZCZEŃ
-
-1. [x] Wait-For Graph
-
-- [x] Zaimplementować strukturę wait-for graph jako słownik
-- [x] Zaimplementować dodawanie krawędzi przy LOCK_REQUEST
-- [x] Zaimplementować usuwanie krawędzi przy LOCK_RELEASE
-
-2. [x] Detekcja cykli
-
-- [x] Zaimplementować DFS do wykrywania cykli w grafie
-- [x] Zaimplementować okresowe uruchamianie detekcji (co 10s)
-- [x] Zaimplementować wybór "ofiary" - węzeł do aborcji
-- [x] Zaimplementować wysyłanie ABORT do węzła-ofiary
-
-3. Rozwiązywanie zakleszczeń
-
-- [x] Zaimplementować zwolnienie wszystkich locków przez ofiarę
-- Zaimplementować logowanie incydentów zakleszczenia
+[x] W teorii powinno dać sie odpalić web, api, db, i kazdy node na osobnych maszynach, komunikacja przez TCP
 
 ### PRZECHOWYWANIE I METADANE
 
 1. System metadanych
 
 - [x] Zaimplementować klasę FileMetadata z polami: filename, size, hash, timestamps, owner
-- Dodać pole replicas - lista węzłów przechowujących plik
+- [x] Dodać pole replicas - lista węzłów przechowujących plik
 - Dodać pole shards dla partycjonowanych plików
-- Zaimplementować globalną bazę metadanych na masterze (SQLite lub in-memory)
-- Zaimplementować lokalne metadane na każdym węźle storage
+- [x] Zaimplementować globalną bazę metadanych na masterze (SQLite lub in-memory)
+- [x] Zaimplementować lokalne metadane na każdym węźle storage
 
 2. Consistent Hashing
 
@@ -118,13 +100,13 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 - Zaimplementować broadcast eventów do wszystkich klientów
 - Zaimplementować connection management
 
-3. Autentykacja
+3. [x] Autentykacja
 
-- Zaimplementować JWT tokens
-- Zaimplementować POST /auth/login zwracający token
-- Zaimplementować middleware sprawdzający token
-- Zaimplementować role: admin, user
-- Dodać owner_id do metadanych pliku
+- [x] Zaimplementować JWT tokens
+- [x] Zaimplementować POST /auth/login zwracający token
+- [x] Zaimplementować middleware sprawdzający token
+- [x] Zaimplementować role: admin, user
+- [x] Dodać owner_id do metadanych pliku
 
 4. Error handling
 
@@ -132,93 +114,6 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 - Zaimplementować odpowiednie HTTP codes: 200, 201, 400, 401, 404, 500, 503
 - Zaimplementować timeout handling dla długich operacji
 - Zaimplementować retry logic dla operacji rozproszonych
-
-### FRONTEND - PODSTAWOWY SETUP
-
-1. [x] Setup projektu
-
-- [x] Zainicjalizować Vite + React + TypeScript
-- [x] Zainstalować i skonfigurować Tailwind CSS
-- [x] Zainicjalizować shadcn/ui
-
-2. Layout
-
-- [x] Zaimplementować Navbar - logo, navigation, user menu
-- [x] Zaimplementować MainLayout wrapper
-
-3. [x] Integracja API
-
-- [x] Stworzyć axios instance z base URL
-- [x] Zaimplementować interceptor dla auth - dodawanie JWT (httpOnly cookies)
-- [x] Zaimplementować interceptor dla błędów - toast przy errorze
-- [x] Zainstalować i skonfigurować TanStack Query
-- [x] Stworzyć custom hooks: useFiles, useNodes, useMetrics
-
-### FRONTEND - NODES DASHBOARD
-
-1. [x] Lista węzłów
-
-- [x] Zaimplementować responsive grid (3/2/1 kolumny)
-- [x] Zaimplementować NodeCard pokazującą: ID, status, role, IP, metryki
-- Zaimplementować real-time update statusu przez WebSocket
-- [x] Zaimplementować badge dla mastera
-
-2. [x] Szczegóły węzła
-
-- [x] Zaimplementować slide-in panel z prawej przy kliknięciu
-- [x] Zaimplementować tabs: Overview, Metrics, Files, Logs
-- [x] Zaimplementować Overview z podstawowymi info
-- Zaimplementować Metrics z live charts (Recharts)
-- [x] Zaimplementować Files z listą plików na węźle
-- [x] Zaimplementować Logs z ostatnimi 100 wpisami
-
-3. Topologia klastra
-
-- Zaimplementować wizualizację grafu używając React Flow lub D3.js
-- Zaimplementować węzły jako koła z kolorami statusu
-- Zaimplementować krawędzie między węzłami
-- Zaimplementować animację podczas elekcji
-- Zaimplementować interaktywność - hover tooltip, klik otwiera detail
-
-4. Election History
-
-- Zaimplementować timeline przeszłych elekcji
-- Zaimplementować wyświetlanie: timestamp, trigger, candidates, winner
-- Zaimplementować filtrowanie po dacie
-- Zaimplementować export do CSV
-
-### FRONTEND - MONITORING
-
-1. [x] System Health
-
-- [x] Zaimplementować 4 karty: Total Files, Active Nodes, Storage Used, Uptime
-- [x] Zaimplementować animowane liczniki (count-up effect)
-- [x] Zaimplementować color coding: green/yellow/red
-- Zaimplementować threshold alerts
-
-2. Performance Charts
-
-- Zaimplementować line chart: throughput (files/min) za 24h
-- Zaimplementować line chart: latency za 24h
-- Zaimplementować bar chart: storage per node
-- Zaimplementować pie chart: file types breakdown
-- Zaimplementować auto-update co 10s przez WebSocket
-
-3. [x] Live Logs
-
-- [x] Zaimplementować scrollable container z ostatnimi 200 logami
-- Zaimplementować auto-scroll do dołu
-- [x] Zaimplementować color coding dla log levels
-- [x] Zaimplementować filtering po level i search
-- [x] Zaimplementować export logs button
-
-4. [x] Alerts Panel
-
-- [x] Zaimplementować listę aktywnych alertów
-- [x] Zdefiniować alert types: Node Offline, Deadlock, Low Storage, High Latency
-- [x] Zaimplementować wyświetlanie: timestamp, severity, message, dismiss button
-- Zaimplementować toast przy nowym alercie
-- Zaimplementować archiwum rozwiązanych alertów
 
 ### BEZPIECZEŃSTWO
 
@@ -233,11 +128,9 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 1. Testy jednostkowe
 
-- Napisać testy dla consistent hashing
-- Napisać testy dla Lamport clock
-- Napisać testy dla wait-for graph (detekcja cykli)
-- Napisać testy dla file hashing
-- Napisać testy dla metadata serialization
+- [x] Napisać testy dla consistent hashing
+- [x] Napisać testy dla wait-for graph (detekcja cykli)
+- [x] Napisać testy dla file hashing
 
 2. Testy integracyjne
 

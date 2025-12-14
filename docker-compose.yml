@@ -9,25 +9,22 @@ services:
       - .env
     environment:
       - POSTGRES_HOST_AUTH_METHOD=trust
-      - HOST=postgres
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
     networks:
-      - my-network
+      - dfs-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
-  
+
   migrate:
     image: migrate/migrate
     env_file:
       - .env
-    environment:
-      - HOST=postgres
     command:
       [
         "-path",
@@ -40,12 +37,107 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - my-network
+      - dfs-network
     volumes:
       - ./backend/migrations:/migrations
 
+  master:
+    build:
+      context: ./backend
+      target: node
+    container_name: master
+    command: ["-ip", "0.0.0.0", "-port", "9000", "-role", "master", "-priority", "100"]
+    ports:
+      - "9000:9000"
+    volumes:
+      - master_data:/app/data
+    networks:
+      - dfs-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  storage1:
+    build:
+      context: ./backend
+      target: node
+    container_name: storage1
+    command: ["-ip", "0.0.0.0", "-port", "9001", "-role", "storage", "-priority", "1", "-seed-ip", "master", "-seed-port", "9000"]
+    ports:
+      - "9001:9001"
+    volumes:
+      - storage1_data:/app/data
+    networks:
+      - dfs-network
+    depends_on:
+      master:
+        condition: service_healthy
+
+  storage2:
+    build:
+      context: ./backend
+      target: node
+    container_name: storage2
+    command: ["-ip", "0.0.0.0", "-port", "9002", "-role", "storage", "-priority", "2", "-seed-ip", "master", "-seed-port", "9000"]
+    ports:
+      - "9002:9002"
+    volumes:
+      - storage2_data:/app/data
+    networks:
+      - dfs-network
+    depends_on:
+      master:
+        condition: service_healthy
+
+  storage3:
+    build:
+      context: ./backend
+      target: node
+    container_name: storage3
+    command: ["-ip", "0.0.0.0", "-port", "9003", "-role", "storage", "-priority", "3", "-seed-ip", "master", "-seed-port", "9000"]
+    ports:
+      - "9003:9003"
+    volumes:
+      - storage3_data:/app/data
+    networks:
+      - dfs-network
+    depends_on:
+      master:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ./backend
+      target: api
+    container_name: api
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+      - MASTER_HOST=master
+      - MASTER_PORT=9000
+    ports:
+      - "8080:8080"
+    networks:
+      - dfs-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      master:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
 networks:
-  my-network:
+  dfs-network:
     driver: bridge
+
 volumes:
   postgres_data:
+  master_data:
+  storage1_data:
+  storage2_data:
+  storage3_data:

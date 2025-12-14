@@ -1,9 +1,7 @@
 package main
 
 import (
-	"context"
-	"dfs-backend/dfs/common"
-	"dfs-backend/dfs/node"
+	"dfs-backend/dfs/client"
 	"dfs-backend/internal/config"
 	"dfs-backend/internal/database"
 	"dfs-backend/internal/handlers"
@@ -22,32 +20,19 @@ func main() {
 	}
 	defer db.Close()
 
-	ctx := context.Background()
+	masterClient := client.NewMasterClient(cfg.MasterHost, cfg.MasterPort)
+	log.Printf("Configured master client for %s:%d", cfg.MasterHost, cfg.MasterPort)
 
-	master := node.CreateNodeWithBully("127.0.0.1", 9000, common.RoleMaster, 100)
-	if err := master.Start(ctx); err != nil {
-		log.Fatalf("failed to start master node: %v", err)
+	if err := masterClient.Ping(); err != nil {
+		log.Printf("Warning: Master node not reachable at startup: %v", err)
+		log.Printf("The API will attempt to connect when handling requests")
+	} else {
+		log.Printf("Master node is reachable")
 	}
-
-	storage1 := node.CreateNodeWithBully("127.0.0.1", 9001, common.RoleStorage, 1)
-	if err := storage1.Start(ctx); err != nil {
-		log.Fatalf("failed to start storage node 1: %v", err)
-	}
-
-	storage2 := node.CreateNodeWithBully("127.0.0.1", 9002, common.RoleStorage, 2)
-	if err := storage2.Start(ctx); err != nil {
-		log.Fatalf("failed to start storage node 2: %v", err)
-	}
-
-	master.RegisterStorageNode(storage1.GetNodeInfo())
-	master.RegisterStorageNode(storage2.GetNodeInfo())
-
-	storage1.AddPeer(master.GetNodeInfo())
-	storage2.AddPeer(master.GetNodeInfo())
 
 	authMiddleware := middleware.NewAuthMiddleware(cfg.JWTSecret)
 	authHandler := handlers.NewAuthHandler(db, cfg.JWTSecret)
-	fileHandler := handlers.NewFileHandler(db, master)
+	fileHandler := handlers.NewFileHandler(db, masterClient)
 
 	router := http.NewServeMux()
 
@@ -69,7 +54,7 @@ func main() {
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Must be more strict, because of http-only cookies, otherwise won't work
+		// Must be that strict, because of http-only cookies, otherwise won't work
 		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")

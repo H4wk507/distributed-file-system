@@ -68,6 +68,25 @@
 - [x] Zaimplementować auto-release przy timeout
 - [x] Zaimplementować obsługę node failure podczas trzymania locka
 
+### WYKRYWANIE ZAKLESZCZEŃ
+
+1. [x] Wait-For Graph
+
+- [x] Zaimplementować strukturę wait-for graph jako słownik
+- [x] Zaimplementować dodawanie krawędzi przy LOCK_REQUEST
+- [x] Zaimplementować usuwanie krawędzi przy LOCK_RELEASE
+
+2. [x] Detekcja cykli
+
+- [x] Zaimplementować DFS do wykrywania cykli w grafie
+- [x] Zaimplementować okresowe uruchamianie detekcji (co 10s)
+- [x] Zaimplementować wybór "ofiary" - węzeł do aborcji
+- [x] Zaimplementować wysyłanie ABORT do węzła-ofiary
+
+3. [x] Rozwiązywanie zakleszczeń
+
+- [x] Zaimplementować zwolnienie wszystkich locków przez ofiarę
+
 ### FRONTEND - FILE EXPLORER
 
 1. [x] Lista plików
@@ -101,3 +120,67 @@
 - [x] Zaimplementować preview dla obrazków
 - [x] Zaimplementować preview dla PDF
 - [x] Zaimplementować fallback dla innych typów
+
+### FRONTEND - PODSTAWOWY SETUP
+
+1. [x] Setup projektu
+
+- [x] Zainicjalizować Vite + React + TypeScript
+- [x] Zainstalować i skonfigurować Tailwind CSS
+- [x] Zainicjalizować shadcn/ui
+
+2. [x] Layout
+
+- [x] Zaimplementować Navbar - logo, navigation, user menu
+- [x] Zaimplementować MainLayout wrapper
+
+3. [x] Integracja API
+
+- [x] Stworzyć axios instance z base URL
+- [x] Zaimplementować interceptor dla auth - dodawanie JWT (httpOnly cookies)
+- [x] Zaimplementować interceptor dla błędów - toast przy errorze
+- [x] Zainstalować i skonfigurować TanStack Query
+- [x] Stworzyć custom hooks: useFiles, useNodes, useMetrics
+
+### FRONTEND - NODES DASHBOARD
+
+1. [x] Lista węzłów
+
+- [x] Zaimplementować responsive grid (3/2/1 kolumny)
+- [x] Zaimplementować NodeCard pokazującą: ID, status, role, IP, metryki
+- Zaimplementować real-time update statusu przez WebSocket
+- [x] Zaimplementować badge dla mastera
+
+2. [x] Szczegóły węzła
+
+- [x] Zaimplementować slide-in panel z prawej przy kliknięciu
+- [x] Zaimplementować tabs: Overview, Metrics, Files, Logs
+- [x] Zaimplementować Overview z podstawowymi info
+- Zaimplementować Metrics z live charts (Recharts)
+- [x] Zaimplementować Files z listą plików na węźle
+- [x] Zaimplementować Logs z ostatnimi 100 wpisami
+
+
+### FRONTEND - MONITORING
+
+1. [x] System Health
+
+- [x] Zaimplementować 4 karty: Total Files, Active Nodes, Storage Used, Uptime
+- [x] Zaimplementować animowane liczniki (count-up effect)
+- [x] Zaimplementować color coding: green/yellow/red
+- Zaimplementować threshold alerts
+
+2. [x] Live Logs
+
+- [x] Zaimplementować scrollable container z ostatnimi 200 logami
+- Zaimplementować auto-scroll do dołu
+- [x] Zaimplementować color coding dla log levels
+- [x] Zaimplementować filtering po level i search
+- [x] Zaimplementować export logs button
+
+3. [x] Alerts Panel
+
+- [x] Zaimplementować listę aktywnych alertów
+- [x] Zdefiniować alert types: Node Offline, Deadlock, Low Storage, High Latency
+- [x] Zaimplementować wyświetlanie: timestamp, severity, message, dismiss button
+

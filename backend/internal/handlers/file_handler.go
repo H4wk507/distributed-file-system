@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"crypto/sha256"
-	"dfs-backend/dfs/node"
+	"dfs-backend/dfs/client"
 	"dfs-backend/internal/database"
 	"dfs-backend/internal/dto"
 	"dfs-backend/internal/middleware"
@@ -19,13 +19,13 @@ import (
 
 type FileHandler struct {
 	service *services.FileService
-	node    *node.Node
+	client  *client.MasterClient
 }
 
-func NewFileHandler(db *database.DB, n *node.Node) *FileHandler {
+func NewFileHandler(db *database.DB, c *client.MasterClient) *FileHandler {
 	return &FileHandler{
 		service: services.NewFileService(db),
-		node:    n,
+		client:  c,
 	}
 }
 
@@ -86,7 +86,18 @@ func (h *FileHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.node.StoreFile(fileID, header.Filename, contentType, data)
+	uploadResp, err := h.client.UploadFile(fileID, header.Filename, contentType, data)
+	if err != nil {
+		h.service.DeleteFileByID(fileID)
+		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to upload file to storage: %v", err))
+		return
+	}
+
+	if !uploadResp.Success {
+		h.service.DeleteFileByID(fileID)
+		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Storage error: %s", uploadResp.Error))
+		return
+	}
 
 	// TODO: streaming response?
 	resp := dto.FileUploadResponse{
@@ -137,18 +148,23 @@ func (h *FileHandler) GetFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fileResponse, err := h.node.RetrieveFile(file.ID, file.Hash)
+	downloadResp, err := h.client.DownloadFile(file.ID, file.Hash)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to retrieve file: %v", err))
 		return
 	}
 
+	if !downloadResp.Success {
+		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Storage error: %s", downloadResp.Error))
+		return
+	}
+
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", file.Name))
 	w.Header().Set("Content-Type", file.ContentType)
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(fileResponse.Data)))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(downloadResp.Data)))
 
 	w.WriteHeader(http.StatusOK)
-	w.Write(fileResponse.Data)
+	w.Write(downloadResp.Data)
 }
 
 func (h *FileHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
@@ -191,7 +207,12 @@ func (h *FileHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.node.DeleteFile(file.ID, file.Hash)
+	deleteResp, err := h.client.DeleteFile(file.ID, file.Hash)
+	if err != nil {
+		fmt.Printf("Warning: Failed to delete file from storage: %v\n", err)
+	} else if !deleteResp.Success {
+		fmt.Printf("Warning: Storage delete error: %s\n", deleteResp.Error)
+	}
 
 	response.JSON(w, http.StatusOK, response.SuccessResponse{
 		Success: true,

@@ -2,7 +2,6 @@ package hashing
 
 import (
 	"dfs-backend/dfs/common"
-	"fmt"
 	"sync"
 	"testing"
 
@@ -139,7 +138,7 @@ func TestHashRing_RemoveNonExistent(t *testing.T) {
 func TestHashRing_FindNodesForFile_EmptyRing(t *testing.T) {
 	hr := NewHashRing(100)
 
-	nodes := hr.FindNodesForFile("test.txt", 3)
+	nodes := hr.FindNodesForFile(uuid.New(), 3)
 
 	if nodes != nil {
 		t.Errorf("expected nil for empty ring, got %v", nodes)
@@ -152,7 +151,7 @@ func TestHashRing_FindNodesForFile_SingleNode(t *testing.T) {
 
 	hr.AddNode(node)
 
-	nodes := hr.FindNodesForFile("test.txt", 3)
+	nodes := hr.FindNodesForFile(uuid.New(), 3)
 
 	if len(nodes) != 1 {
 		t.Errorf("expected 1 node (only one exists), got %d", len(nodes))
@@ -174,7 +173,7 @@ func TestHashRing_FindNodesForFile_MultipleNodes(t *testing.T) {
 	hr.AddNode(node2)
 	hr.AddNode(node3)
 
-	nodes := hr.FindNodesForFile("testfile.txt", 2)
+	nodes := hr.FindNodesForFile(uuid.New(), 2)
 
 	if len(nodes) != 2 {
 		t.Errorf("expected 2 nodes, got %d", len(nodes))
@@ -192,7 +191,7 @@ func TestHashRing_FindNodesForFile_RequestMoreThanExists(t *testing.T) {
 	hr.AddNode(createTestNode(1))
 	hr.AddNode(createTestNode(2))
 
-	nodes := hr.FindNodesForFile("test.txt", 10)
+	nodes := hr.FindNodesForFile(uuid.New(), 10)
 
 	if len(nodes) != 2 {
 		t.Errorf("expected 2 nodes (only 2 exist), got %d", len(nodes))
@@ -206,11 +205,11 @@ func TestHashRing_Consistency(t *testing.T) {
 		hr.AddNode(createTestNode(i))
 	}
 
-	filename := "consistent_file.dat"
+	fileID := uuid.New()
 
 	// Wielokrotne zapytania powinny zwracać te same węzły
-	nodes1 := hr.FindNodesForFile(filename, 3)
-	nodes2 := hr.FindNodesForFile(filename, 3)
+	nodes1 := hr.FindNodesForFile(fileID, 3)
+	nodes2 := hr.FindNodesForFile(fileID, 3)
 
 	if len(nodes1) != len(nodes2) {
 		t.Fatal("consistent hashing should return same number of nodes")
@@ -235,7 +234,8 @@ func TestHashRing_ConsistencyAfterNodeRemoval(t *testing.T) {
 	hr.AddNode(node3)
 
 	// Znajdź węzły dla pliku przed usunięciem
-	nodesBefore := hr.FindNodesForFile("stable_file.txt", 1)
+	fileID := uuid.New()
+	nodesBefore := hr.FindNodesForFile(fileID, 1)
 	targetNodeBefore := nodesBefore[0].ID
 
 	// Usuń inny węzeł (nie ten który obsługuje plik)
@@ -250,7 +250,7 @@ func TestHashRing_ConsistencyAfterNodeRemoval(t *testing.T) {
 	hr.RemoveNode(nodeToRemove)
 
 	// Plik powinien nadal być na tym samym węźle (o ile ten węzeł nie został usunięty)
-	nodesAfter := hr.FindNodesForFile("stable_file.txt", 1)
+	nodesAfter := hr.FindNodesForFile(fileID, 1)
 
 	if nodesAfter[0].ID != targetNodeBefore {
 		t.Error("file should remain on same node after removing different node")
@@ -326,8 +326,8 @@ func TestHashRing_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			filename := fmt.Sprintf("file_%d.txt", idx)
-			hr.FindNodesForFile(filename, 3)
+			fileID := uuid.New()
+			hr.FindNodesForFile(fileID, 3)
 		}(i)
 	}
 
@@ -347,7 +347,7 @@ func TestHashRing_WrapAround(t *testing.T) {
 	hr.AddNode(node)
 
 	// Powinien znaleźć węzeł niezależnie od wartości hasha
-	nodes := hr.FindNodesForFile("any_file.txt", 1)
+	nodes := hr.FindNodesForFile(uuid.New(), 1)
 
 	if len(nodes) != 1 {
 		t.Error("should find node even with wrap-around")

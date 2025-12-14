@@ -59,6 +59,11 @@ const (
 	MessageMetadataRequest  MessageType = "metadata_request"
 	MessageMetadataResponse MessageType = "metadata_response"
 	MessageReplicateFile    MessageType = "replicate_file"
+
+	// API -> Master messages
+	MessageAPIFileUpload   MessageType = "api_file_upload"
+	MessageAPIFileDownload MessageType = "api_file_download"
+	MessageAPIFileDelete   MessageType = "api_file_delete"
 )
 
 type Message struct {
@@ -176,4 +181,47 @@ type ReplicateFileRequest struct {
 	Hash        string      `json:"hash"`
 	SourceNode  uuid.UUID   `json:"source_node"`
 	TargetNodes []uuid.UUID `json:"target_nodes"`
+}
+
+type APIFileUploadRequest struct {
+	RequestID   string    `json:"request_id"`
+	FileID      uuid.UUID `json:"file_id"`
+	Filename    string    `json:"filename"`
+	ContentType string    `json:"content_type"`
+	Size        int64     `json:"size"`
+	Data        []byte    `json:"data"`
+}
+
+type APIFileUploadResponse struct {
+	RequestID string `json:"request_id"`
+	Success   bool   `json:"success"`
+	Hash      string `json:"hash"`
+	Error     string `json:"error,omitempty"`
+}
+
+type APIFileDownloadRequest struct {
+	RequestID string    `json:"request_id"`
+	FileID    uuid.UUID `json:"file_id"`
+	Hash      string    `json:"hash"`
+}
+
+type APIFileDownloadResponse struct {
+	RequestID   string `json:"request_id"`
+	Success     bool   `json:"success"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	Data        []byte `json:"data"`
+	Error       string `json:"error,omitempty"`
+}
+
+type APIFileDeleteRequest struct {
+	RequestID string    `json:"request_id"`
+	FileID    uuid.UUID `json:"file_id"`
+	Hash      string    `json:"hash"`
+}
+
+type APIFileDeleteResponse struct {
+	RequestID string `json:"request_id"`
+	Success   bool   `json:"success"`
+	Error     string `json:"error,omitempty"`
 }

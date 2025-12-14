@@ -173,8 +173,18 @@ func (n *Node) handleConnection(conn net.Conn) {
 
 	n.UpdateAndGetLogicalTime(msgWithTime.LogicalTime)
 
-	if msgWithTime.Message.Type == MessageDiscovery {
+	switch msgWithTime.Message.Type {
+	case MessageDiscovery:
 		n.handleDiscoveryWithConnection(msgWithTime.Message, conn)
+		return
+	case common.MessageAPIFileUpload:
+		n.handleAPIFileUpload(msgWithTime.Message, conn)
+		return
+	case common.MessageAPIFileDownload:
+		n.handleAPIFileDownload(msgWithTime.Message, conn)
+		return
+	case common.MessageAPIFileDelete:
+		n.handleAPIFileDelete(msgWithTime.Message, conn)
 		return
 	}
 
@@ -1597,5 +1607,147 @@ func (n *Node) DeleteFile(fileID uuid.UUID, hash string) {
 
 	for _, node := range nodes {
 		go n.SendMessage(node.IP, node.Port, msg)
+	}
+}
+
+func (n *Node) handleAPIFileUpload(msg common.Message, conn net.Conn) {
+	var request common.APIFileUploadRequest
+	if err := json.Unmarshal(msg.Payload, &request); err != nil {
+		n.sendAPIResponse(conn, msg.From, common.MessageAPIFileUpload, common.APIFileUploadResponse{
+			RequestID: request.RequestID,
+			Success:   false,
+			Error:     "invalid request payload",
+		})
+		return
+	}
+
+	n.logger.Printf("API: Received upload request for file %s (%d bytes)", request.Filename, request.Size)
+
+	if n.Role != common.RoleMaster {
+		n.sendAPIResponse(conn, msg.From, common.MessageAPIFileUpload, common.APIFileUploadResponse{
+			RequestID: request.RequestID,
+			Success:   false,
+			Error:     "node is not master",
+		})
+		return
+	}
+
+	if n.hashRing == nil || n.hashRing.GetNodeCount() == 0 {
+		n.sendAPIResponse(conn, msg.From, common.MessageAPIFileUpload, common.APIFileUploadResponse{
+			RequestID: request.RequestID,
+			Success:   false,
+			Error:     "no storage nodes available",
+		})
+		return
+	}
+
+	n.StoreFile(request.FileID, request.Filename, request.ContentType, request.Data)
+
+	response := common.APIFileUploadResponse{
+		RequestID: request.RequestID,
+		Success:   true,
+	}
+
+	n.sendAPIResponse(conn, msg.From, common.MessageAPIFileUpload, response)
+	n.logger.Printf("API: Upload initiated for file %s", request.Filename)
+}
+
+func (n *Node) handleAPIFileDownload(msg common.Message, conn net.Conn) {
+	var request common.APIFileDownloadRequest
+	if err := json.Unmarshal(msg.Payload, &request); err != nil {
+		n.sendAPIResponse(conn, msg.From, common.MessageAPIFileDownload, common.APIFileDownloadResponse{
+			RequestID: request.RequestID,
+			Success:   false,
+			Error:     "invalid request payload",
+		})
+		return
+	}
+
+	n.logger.Printf("API: Received download request for file %s (hash: %s)", request.FileID, request.Hash)
+
+	if n.Role != common.RoleMaster {
+		n.sendAPIResponse(conn, msg.From, common.MessageAPIFileDownload, common.APIFileDownloadResponse{
+			RequestID: request.RequestID,
+			Success:   false,
+			Error:     "node is not master",
+		})
+		return
+	}
+
+	fileResponse, err := n.RetrieveFile(request.FileID, request.Hash)
+	if err != nil {
+		n.sendAPIResponse(conn, msg.From, common.MessageAPIFileDownload, common.APIFileDownloadResponse{
+			RequestID: request.RequestID,
+			Success:   false,
+			Error:     err.Error(),
+		})
+		return
+	}
+
+	response := common.APIFileDownloadResponse{
+		RequestID: request.RequestID,
+		Success:   true,
+		Filename:  fileResponse.Filename,
+		Data:      fileResponse.Data,
+	}
+
+	n.sendAPIResponse(conn, msg.From, common.MessageAPIFileDownload, response)
+	n.logger.Printf("API: Download completed for file %s", request.FileID)
+}
+
+func (n *Node) handleAPIFileDelete(msg common.Message, conn net.Conn) {
+	var request common.APIFileDeleteRequest
+	if err := json.Unmarshal(msg.Payload, &request); err != nil {
+		n.sendAPIResponse(conn, msg.From, common.MessageAPIFileDelete, common.APIFileDeleteResponse{
+			RequestID: request.RequestID,
+			Success:   false,
+			Error:     "invalid request payload",
+		})
+		return
+	}
+
+	n.logger.Printf("API: Received delete request for file %s", request.FileID)
+
+	if n.Role != common.RoleMaster {
+		n.sendAPIResponse(conn, msg.From, common.MessageAPIFileDelete, common.APIFileDeleteResponse{
+			RequestID: request.RequestID,
+			Success:   false,
+			Error:     "node is not master",
+		})
+		return
+	}
+
+	n.DeleteFile(request.FileID, request.Hash)
+
+	response := common.APIFileDeleteResponse{
+		RequestID: request.RequestID,
+		Success:   true,
+	}
+
+	n.sendAPIResponse(conn, msg.From, common.MessageAPIFileDelete, response)
+	n.logger.Printf("API: Delete initiated for file %s", request.FileID)
+}
+
+func (n *Node) sendAPIResponse(conn net.Conn, to uuid.UUID, msgType common.MessageType, response any) {
+	payload, err := json.Marshal(response)
+	if err != nil {
+		n.logger.Printf("Failed to marshal API response: %v", err)
+		return
+	}
+
+	newTime := n.IncrementAndGetLogicalTime()
+	responseMsg := common.MessageWithTime{
+		Message: common.Message{
+			Type:    msgType,
+			From:    n.ID,
+			To:      to,
+			Payload: payload,
+		},
+		LogicalTime: newTime,
+	}
+
+	encoder := json.NewEncoder(conn)
+	if err := encoder.Encode(responseMsg); err != nil {
+		n.logger.Printf("Failed to send API response: %v", err)
 	}
 }

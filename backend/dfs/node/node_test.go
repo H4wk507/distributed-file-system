@@ -1729,7 +1729,7 @@ func TestInitiateReplication_SkipsWhenNoMissingNodes(t *testing.T) {
 	node.AddPeer(storageNode3)
 
 	// Get expected nodes for a file
-	expectedNodes := node.hashRing.FindNodesForFile("testfile.txt", 3)
+	expectedNodes := node.hashRing.FindNodesForFile(uuid.New(), 3)
 	replicas := make([]uuid.UUID, len(expectedNodes))
 	for i, n := range expectedNodes {
 		replicas[i] = n.ID
