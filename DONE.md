@@ -87,6 +87,27 @@
 
 - [x] Zaimplementować zwolnienie wszystkich locków przez ofiarę
 
+### BACKEND API
+
+1. [x] Podstawowe endpointy REST
+
+- [x] Zaimplementować POST /files/upload - multipart upload
+- [X] Zaimplementować GET /files/{filename} - stream download
+- [X] Zaimplementować GET /files/ - lista plików z paginacją
+- [x] Zaimplementować DELETE /files/{filename}
+- [X] Zaimplementować GET /files/{filename}/metadata
+- [X] Zaimplementować GET /nodes/ - lista węzłów
+- [X] Zaimplementować GET /nodes/{node_id} - szczegóły węzła
+- [X] Zaimplementować GET /metrics/system - metryki systemu
+
+2. [x] Autentykacja
+
+- [x] Zaimplementować JWT tokens
+- [x] Zaimplementować POST /auth/login zwracający token
+- [x] Zaimplementować middleware sprawdzający token
+- [x] Zaimplementować role: admin, user
+- [x] Dodać owner_id do metadanych pliku
+
 ### FRONTEND - FILE EXPLORER
 
 1. [x] Lista plików

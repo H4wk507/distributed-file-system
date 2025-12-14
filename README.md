@@ -80,41 +80,6 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 - Zaimplementować proces w tle nie blokujący innych operacji
 - Zaimplementować tracking progress re-balancingu
 
-### BACKEND API
-
-1. Podstawowe endpointy REST
-
-- [x] Zaimplementować POST /files/upload - multipart upload
-- [X] Zaimplementować GET /files/{filename} - stream download
-- [X] Zaimplementować GET /files/ - lista plików z paginacją
-- [x] Zaimplementować DELETE /files/{filename}
-- [X] Zaimplementować GET /files/{filename}/metadata
-- [X] Zaimplementować GET /nodes/ - lista węzłów
-- [X] Zaimplementować GET /nodes/{node_id} - szczegóły węzła
-- [X] Zaimplementować GET /metrics/system - metryki systemu
-
-2. WebSocket real-time
-
-- Zaimplementować endpoint WS /ws
-- Zdefiniować event types: FILE_UPLOADED, NODE_JOINED, ELECTION_STARTED, DEADLOCK_DETECTED, etc.
-- Zaimplementować broadcast eventów do wszystkich klientów
-- Zaimplementować connection management
-
-3. [x] Autentykacja
-
-- [x] Zaimplementować JWT tokens
-- [x] Zaimplementować POST /auth/login zwracający token
-- [x] Zaimplementować middleware sprawdzający token
-- [x] Zaimplementować role: admin, user
-- [x] Dodać owner_id do metadanych pliku
-
-4. Error handling
-
-- Zdefiniować standardowy format błędu: {error, code, details}
-- Zaimplementować odpowiednie HTTP codes: 200, 201, 400, 401, 404, 500, 503
-- Zaimplementować timeout handling dla długich operacji
-- Zaimplementować retry logic dla operacji rozproszonych
-
 ### BEZPIECZEŃSTWO
 
 1. Szyfrowanie danych
@@ -126,29 +91,13 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 ### TESTOWANIE
 
-1. Testy jednostkowe
+1. [x] Testy jednostkowe
 
 - [x] Napisać testy dla consistent hashing
 - [x] Napisać testy dla wait-for graph (detekcja cykli)
 - [x] Napisać testy dla file hashing
 
-2. Testy integracyjne
-
-- Napisać test: upload -> download -> verify checksum
-- Napisać test: upload -> delete -> download = 404
-- Napisać test: upload do 3 węzłów -> plik na wszystkich
-- Napisać test: zabicie węzła storage -> download z innej repliki działa
-- Napisać test: zabicie mastera -> elekcja -> operacje działają
-- Napisać test: concurrent lock requests -> tylko jeden dostaje
-
-3. Testy mutacyjne
-
-- Uruchomić mutmut na kluczowych modułach
-- Osiągnąć mutation score >80%
-- Przeanalizować survived mutants
-- Dodać brakujące testy
-
-4. Chaos Engineering
+2. Chaos Engineering
 
 - Zaimplementować scenariusz: losowe zabijanie węzłów co 30s
 - Zaimplementować scenariusz: random network delays
@@ -156,7 +105,7 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 - Przetestować dostępność systemu w chaosie
 - Przetestować deadlock detection w chaosie
 
-5. Testy obciążeniowe
+3. Testy obciążeniowe
 
 - Napisać scenariusz locust: 100 concurrent uploads
 - Zmierzyć throughput, latency (p50, p95, p99), error rate
@@ -165,91 +114,32 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 - Zidentyfikować bottlenecki
 - Target: >100 req/sec, <500ms latency
 
-### DOKUMENTACJA (LaTeX)
+### DOKUMENTACJA
 
-1. Model systemu
+1. Architektura systemu
 
-- Napisać definicję rozproszonego systemu plików
-- Napisać uzasadnienie wyboru tego typu systemu
-- Narysować diagram architektury master-storage-client
-- Określić założenia systemu
+- Narysować diagram architektury: Master Node ↔ Storage Nodes ↔ Client (Web UI)
+- Opisać rolę każdego komponentu (master koordynuje, storage przechowuje, client wyświetla)
+- Opisać przepływ danych przy upload/download
 
-2. Model matematyczny
+2. Schemat bazy danych
 
-- Zdefiniować przestrzeń stanów S
-- Zdefiniować funkcje przejścia między stanami
-- Wyprowadzić wzór consistent hashing
-- Zdefiniować formalnie Lamport timestamps
-- Zdefiniować wait-for graph matematycznie
-
-3. Algorytmy - opis szczegółowy
-
-- Napisać pseudokod Bully Algorithm + proof + złożoność
-- Napisać pseudokod Lamport Mutual Exclusion + proof + złożoność
-- Napisać pseudokod Deadlock Detection (DFS) + złożoność
-- Napisać pseudokod Consistent Hashing + rebalancing + złożoność
-
-4. Wzorce projektowe
-
-- Zidentyfikować użyte wzorce: Singleton, Observer, Strategy, Factory, Command
-- Opisać gdzie i dlaczego użyto każdego wzorca
-- Narysować diagramy UML dla wzorców
-
-5. Analiza bezpieczeństwa
-
-- Zdefiniować threat model (możliwe ataki)
-- Opisać mitigation strategies
-- Przeprowadzić vulnerability testing
-- Stworzyć security audit checklist
-
-6. Diagramy UML (minimum 5)
-
-- Narysować Class Diagram - klasy i relacje
-- Narysować Sequence Diagram - proces elekcji
-- Narysować Sequence Diagram - upload z replikacją
-- Narysować State Diagram - stany węzła
-- Narysować Activity Diagram - detekcja zakleszczenia
-- Narysować Component Diagram - moduły systemu
-- Narysować Deployment Diagram - rozmieszczenie
-
-7. Schemat bazy danych
-
-- Zdefiniować tabelę Files
-- Zdefiniować tabelę Replicas
-- Zdefiniować tabelę Nodes
-- Zdefiniować tabelę Locks
+- Zdefiniować tabele: Files, Replicas, Nodes
 - Narysować ER diagram z relacjami
 
-8. Opis fragmentów kodu
+3. Kluczowe algorytmy (krótki opis)
 
-- Wybrać 4-5 kluczowych fragmentów kodu
-- Wyjaśnić szczegółowo co robi każda linia
-- Wyjaśnić dlaczego wybrano takie rozwiązanie
-- Opisać alternatywne podejścia
+- Consistent Hashing - jak wybieramy węzły do przechowywania pliku
+- Bully Algorithm - jak wybieramy nowego mastera przy awarii
+- Deadlock Detection - jak wykrywamy zakleszczenia (wait-for graph + DFS)
+- Distributed Locking - jak zarządzamy blokadami w systemie rozproszonym
+- Streaming - jak przesyłamy pliki między węzłami
 
-9. Analiza złożoności
+4. Instrukcja uruchomienia
 
-- Obliczyć złożoność upload pliku
-- Obliczyć złożoność download pliku
-- Obliczyć złożoność elekcji
-- Obliczyć złożoność deadlock detection
-- Obliczyć złożoność search file
-
-10. Raport z testów
-
-- Stworzyć tabelę: test case, input, expected, actual, status
-- Dodać wykresy code coverage per moduł
-- Dodać wyniki mutation testing
-- Dodać wykresy z load testingu
-- Napisać wnioski i możliwe usprawnienia
-
-11. Instrukcja wdrożenia
-
-- Określić wymagania systemowe
-- Napisać krok po kroku instalację
-- Opisać konfigurację (config files)
-- Opisać uruchomienie (docker-compose lub manual)
-- Dodać sekcję troubleshooting
+- Wymagania: Docker, Go 1.25+, Node.js 22+
+- Uruchomienie: `docker-compose up`
+- Konfiguracja portów i zmiennych środowiskowych
 
 ### ZAAWANSOWANE FEATURES (OPCJONALNE)
 
