@@ -49,31 +49,20 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 ### REPLIKACJA DANYCH
 
-1. Upload pliku
+1. [x] Upload pliku
 
 - [x] Zaimplementować przyjmowanie pliku przez mastera
-- Zaimplementować obliczanie hash i sprawdzanie duplikacji
 - [x] Zaimplementować wybór N węzłów storage przez consistent hashing
 - [x] Zaimplementować wysyłanie pliku równolegle do wszystkich węzłów
 - [x] Zaimplementować zbieranie ACK i zapisywanie metadanych
-- Zaimplementować wybór następnego węzła przy braku odpowiedzi
 
 2. Download pliku
 
 - [x] Zaimplementować request do mastera z nazwą pliku
 - [x] Zaimplementować lookup metadanych - który węzeł ma plik
 - Zaimplementować wybór najbliższego/najmniej obciążonego węzła
-- Zaimplementować przekazanie adresu węzła klientowi
-- Zaimplementować bezpośredni download klient->storage
 
-3. Wykrywanie niespójności
-
-- Zaimplementować okresowe sprawdzanie replik (raz na godzinę)
-- Zaimplementować porównywanie hash replik
-- Zaimplementować usuwanie skorumpowanych replik
-- Zaimplementować tworzenie nowych replik z dobrego źródła
-
-4. Re-balancing
+3. Re-balancing
 
 - Zaimplementować obliczanie które pliki przenieść przy zmianie topologii
 - Zaimplementować tworzenie brakujących replik po offline węzła
@@ -124,7 +113,7 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 
 2. Schemat bazy danych
 
-- Zdefiniować tabele: Files, Replicas, Nodes
+- Zdefiniować tabele: Files, Replicas
 - Narysować ER diagram z relacjami
 
 3. Kluczowe algorytmy (krótki opis)
@@ -171,10 +160,3 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 - Dodać historię wersji do UI
 - Zaimplementować przywracanie starych wersji
 - Zaimplementować vector clocks dla konfliktów
-
-5. Geo-replication
-
-- Zaimplementować klastry w różnych "regionach"
-- Zaimplementować cross-region replication
-- Zaimplementować conflict resolution (last-write-wins lub vector clocks)
-- Dodać wybór regionu do UI

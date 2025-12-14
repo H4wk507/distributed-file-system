@@ -122,25 +122,7 @@ export function FileActions({
               label="zmodyfikowano"
               value={formatDate(file.updated_at)}
             />
-            <div className="p-3">
-              <span className="text-xs font-mono uppercase text-muted-foreground">
-                repliki
-              </span>
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {file.replicas?.map((nodeId, i) => (
-                  <span
-                    key={i}
-                    className="px-2 py-0.5 text-xs bg-muted border border-border font-mono"
-                  >
-                    {nodeId}
-                  </span>
-                )) || (
-                  <span className="text-xs text-muted-foreground font-mono">
-                    brak
-                  </span>
-                )}
-              </div>
-            </div>
+            <InfoRow label="repliki" value={file.replicas_count.toString()} />
           </div>
         </DialogContent>
       </Dialog>

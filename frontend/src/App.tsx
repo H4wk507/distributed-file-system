@@ -2,8 +2,6 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import HomePage from "@/pages/HomePage";
 import LoginPage from "@/pages/LoginPage";
-import MonitoringPage from "@/pages/MonitoringPage";
-import NodesPage from "@/pages/NodesPage";
 import RegisterPage from "@/pages/RegisterPage";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
@@ -67,22 +65,6 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <HomePage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/nodes"
-        element={
-          <ProtectedRoute>
-            <NodesPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/monitoring"
-        element={
-          <ProtectedRoute>
-            <MonitoringPage />
           </ProtectedRoute>
         }
       />

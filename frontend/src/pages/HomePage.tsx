@@ -4,9 +4,11 @@ import { MainLayout } from "@/components/MainLayout";
 import { Progress } from "@/components/ui/progress";
 import { useFileDownload } from "@/hooks/useFileDownload";
 import { useDeleteFile, useFiles } from "@/hooks/useFiles";
+import { useMetrics } from "@/hooks/useMetrics";
 import { formatBytes } from "@/lib/formatters";
 import {
   CheckCircle,
+  Copy,
   FileText,
   HardDrive,
   Loader2,
@@ -21,6 +23,7 @@ export default function HomePage() {
   const perPage = 10;
 
   const { data, isLoading, isError } = useFiles(page, perPage);
+  const { data: metrics } = useMetrics();
   const deleteFileMutation = useDeleteFile();
 
   const { downloads, downloadFile, cancelDownload, clearDownload } =
@@ -33,8 +36,6 @@ export default function HomePage() {
   const files = data?.files ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / perPage);
-
-  const totalSize = files.reduce((acc, f) => acc + f.size, 0);
 
   const handleDelete = (fileId: string) => {
     deleteFileMutation.mutate(fileId);
@@ -57,21 +58,26 @@ export default function HomePage() {
       </div>
 
       {/* Stats - asymetryczny grid, bez kart */}
-      <div className="grid grid-cols-3 gap-px bg-border mb-6">
+      <div className="grid grid-cols-4 gap-px bg-border mb-6">
         <StatBlock
           icon={<FileText className="w-4 h-4" />}
           label="pliki"
-          value={total.toString()}
+          value={metrics?.total_files?.toString() ?? "—"}
         />
         <StatBlock
           icon={<HardDrive className="w-4 h-4" />}
           label="przestrzeń"
-          value={formatBytes(totalSize)}
+          value={metrics?.total_size ? formatBytes(metrics.total_size) : "—"}
         />
         <StatBlock
           icon={<Server className="w-4 h-4" />}
           label="węzły"
-          value="3"
+          value={metrics?.active_nodes?.toString() ?? "—"}
+        />
+        <StatBlock
+          icon={<Copy className="w-4 h-4" />}
+          label="repliki"
+          value={metrics?.total_replicas?.toString() ?? "—"}
         />
       </div>
 

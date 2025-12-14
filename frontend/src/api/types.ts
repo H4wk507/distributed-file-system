@@ -18,7 +18,6 @@ export interface FileInfo {
   content_type: string;
   hash: string;
   owner_id: string;
-  replicas?: string[];
   created_at: string;
   updated_at: string;
   replicas_count: number;

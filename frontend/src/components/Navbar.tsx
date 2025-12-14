@@ -1,7 +1,7 @@
 import { useAuth } from "@/context/AuthContext";
 import { useLogout } from "@/hooks/useAuth";
-import { Activity, Files, LogOut, Server, Settings, User } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
+import { LogOut, Settings, User } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -12,16 +12,9 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
-const navLinks = [
-  { href: "/", label: "pliki", icon: Files },
-  { href: "/nodes", label: "węzły", icon: Server },
-  { href: "/monitoring", label: "monitoring", icon: Activity },
-];
-
 export function Navbar() {
   const { user } = useAuth();
   const logout = useLogout();
-  const location = useLocation();
 
   return (
     <header className="border-b border-border bg-card sticky top-0 z-50">
@@ -37,27 +30,6 @@ export function Navbar() {
               rozproszony system plików
             </span>
           </Link>
-
-          {/* Nawigacja - styl terminala */}
-          <nav className="hidden sm:flex items-center">
-            {navLinks.map((link, idx) => {
-              const isActive = location.pathname === link.href;
-              return (
-                <Link
-                  key={link.href}
-                  to={link.href}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono uppercase tracking-wide transition-colors border-l border-border ${
-                    isActive
-                      ? "text-primary bg-primary/10"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  } ${idx === navLinks.length - 1 ? "border-r" : ""}`}
-                >
-                  <link.icon className="w-3.5 h-3.5" />
-                  {link.label}
-                </Link>
-              );
-            })}
-          </nav>
 
           {/* User menu - minimalny */}
           <div className="flex items-center gap-3">
@@ -82,20 +54,8 @@ export function Navbar() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <div className="sm:hidden">
-                  {navLinks.map((link) => (
-                    <DropdownMenuItem key={link.href} asChild>
-                      <Link
-                        to={link.href}
-                        className="flex items-center gap-2 text-xs"
-                      >
-                        <link.icon className="w-3.5 h-3.5" />
-                        {link.label}
-                      </Link>
-                    </DropdownMenuItem>
-                  ))}
                   <DropdownMenuSeparator />
                 </div>
-
                 <DropdownMenuItem className="text-xs">
                   <Settings className="w-3.5 h-3.5 mr-2" />
                   ustawienia

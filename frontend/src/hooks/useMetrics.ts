@@ -2,7 +2,6 @@ import type { ApiResponse, SystemMetrics } from "@/api/types";
 import { useQuery } from "@tanstack/react-query";
 import { useAxios } from "./useAxios";
 
-// TODO: implement those endpoints
 export function useMetrics() {
   const axios = useAxios();
 
