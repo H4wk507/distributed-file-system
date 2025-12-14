@@ -14,13 +14,20 @@ import (
 )
 
 func main() {
-	ip := flag.String("ip", "127.0.0.1", "Node IP address")
+	ip := flag.String("ip", "127.0.0.1", "Node IP address to bind to")
+	advertiseIP := flag.String("advertise-ip", "", "IP address to advertise to other nodes (defaults to -ip if not set)")
 	port := flag.Int("port", 9000, "Node port")
 	role := flag.String("role", "storage", "Node role (master/storage)")
 	priority := flag.Int("priority", 1, "Node priority (higher = stronger)")
 	seedIP := flag.String("seed-ip", "", "Seed node IP for discovery")
 	seedPort := flag.Int("seed-port", 9000, "Seed node port for discovery")
 	flag.Parse()
+
+	// Use advertise IP if provided, otherwise fall back to bind IP
+	nodeAdvertiseIP := *advertiseIP
+	if nodeAdvertiseIP == "" {
+		nodeAdvertiseIP = *ip
+	}
 
 	var nodeRole common.NodeRole
 	switch *role {
@@ -32,7 +39,7 @@ func main() {
 		log.Fatalf("Invalid role: %s (must be 'master' or 'storage')", *role)
 	}
 
-	n := node.CreateNodeWithBully(*ip, *port, nodeRole, *priority)
+	n := node.CreateNodeWithBully(*ip, nodeAdvertiseIP, *port, nodeRole, *priority)
 	log.Printf("Created node: ID=%s, Role=%s, Priority=%d", n.ID, nodeRole, *priority)
 
 	ctx, cancel := context.WithCancel(context.Background())

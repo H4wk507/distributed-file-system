@@ -38,10 +38,10 @@ func main() {
 
 	// Create nodes
 	log.Println("Step 1: Creating nodes...")
-	master := node.CreateNodeWithBully("127.0.0.1", 9100, common.RoleMaster, 10)
-	storage1 := node.CreateNodeWithBully("127.0.0.1", 9101, common.RoleStorage, 5)
-	storage2 := node.CreateNodeWithBully("127.0.0.1", 9102, common.RoleStorage, 3)
-	storage3 := node.CreateNodeWithBully("127.0.0.1", 9103, common.RoleStorage, 1)
+	master := node.CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9100, common.RoleMaster, 10)
+	storage1 := node.CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9101, common.RoleStorage, 5)
+	storage2 := node.CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9102, common.RoleStorage, 3)
+	storage3 := node.CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9103, common.RoleStorage, 1)
 
 	// Start all nodes
 	log.Println("Step 2: Starting nodes...")
@@ -82,22 +82,27 @@ func main() {
 
 	printStatus(master, storage1, storage2, storage3)
 
-	// Upload some test files through master
-	log.Println("Step 5: Uploading test files to storage nodes...")
+	// Store test files directly on storage nodes (simulating data that exists)
+	log.Println("Step 5: Storing test files directly on storage nodes...")
 	testFiles := []struct {
 		name    string
 		content string
+		storage *node.Node
 	}{
-		{"test-file-1.txt", "Content of file 1"},
-		{"test-file-2.txt", "Content of file 2"},
-		{"test-file-3.txt", "Content of file 3"},
+		{"test-file-1.txt", "Content of file 1", storage1},
+		{"test-file-2.txt", "Content of file 2", storage2},
+		{"test-file-3.txt", "Content of file 3", storage3},
 	}
 
 	for _, tf := range testFiles {
 		fileID := uuid.New()
-		data := []byte(tf.content)
-		master.StoreFile(fileID, tf.name, "text/plain", data)
-		log.Printf("  Uploaded: %s (ID: %s)", tf.name, fileID)
+		data := bytes.NewReader([]byte(tf.content))
+		_, err := tf.storage.GetStorage().SaveFile(fileID, tf.name, "text/plain", data)
+		if err != nil {
+			log.Printf("  Warning: Failed to save %s: %v", tf.name, err)
+		} else {
+			log.Printf("  Stored: %s (ID: %s)", tf.name, fileID)
+		}
 	}
 
 	// Wait for files to be stored

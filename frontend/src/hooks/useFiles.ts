@@ -72,7 +72,6 @@ export function useUploadFile() {
   });
 }
 
-// TODO: implement those endpoints
 export function useDeleteFile() {
   const axios = useAxios();
   const queryClient = useQueryClient();
@@ -85,34 +84,6 @@ export function useDeleteFile() {
       toast.success("Plik usunięty");
       queryClient.invalidateQueries({ queryKey: ["files"] });
       queryClient.invalidateQueries({ queryKey: ["metrics"] });
-    },
-  });
-}
-
-// TODO: implement those endpoints
-export function useDownloadFile() {
-  const axios = useAxios();
-
-  return useMutation({
-    mutationFn: async ({
-      fileId,
-      filename,
-    }: {
-      fileId: string;
-      filename: string;
-    }) => {
-      const { data } = await axios.get(`/files/${fileId}/download`, {
-        responseType: "blob",
-      });
-
-      const url = window.URL.createObjectURL(new Blob([data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", filename);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
     },
   });
 }

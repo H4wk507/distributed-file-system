@@ -20,12 +20,17 @@ func main() {
 	}
 	defer db.Close()
 
-	masterClient := client.NewMasterClient(cfg.MasterHost, cfg.MasterPort)
-	log.Printf("Configured master client for %s:%d", cfg.MasterHost, cfg.MasterPort)
+	// Configure seed nodes for master discovery
+	// Primary seed is from config, additional seeds can be added for failover
+	seeds := []client.NodeAddr{{IP: cfg.MasterHost, Port: cfg.MasterPort}}
+	// TODO: Add additional seed nodes from config (e.g., cfg.SeedNodes)
+
+	masterClient := client.NewMasterClientWithSeeds(seeds)
+	log.Printf("Configured master client with %d seed node(s)", len(seeds))
 
 	if err := masterClient.Ping(); err != nil {
-		log.Printf("Warning: Master node not reachable at startup: %v", err)
-		log.Printf("The API will attempt to connect when handling requests")
+		log.Printf("Warning: No master reachable at startup: %v", err)
+		log.Printf("The API will attempt to discover master when handling requests")
 	} else {
 		log.Printf("Master node is reachable")
 	}
@@ -41,6 +46,7 @@ func main() {
 
 	router.Handle("GET /api/auth/me", authMiddleware.RequireAuth(http.HandlerFunc(authHandler.GetMe)))
 
+	router.Handle("GET /api/files", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.ListFiles)))
 	router.Handle("POST /api/files/upload/", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.UploadFile)))
 	router.Handle("GET /api/files/{fileID}/", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.GetFile)))
 	router.Handle("DELETE /api/files/{fileID}/", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.DeleteFile)))

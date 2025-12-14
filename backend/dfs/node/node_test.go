@@ -16,7 +16,7 @@ import (
 func TestLockTimeout(t *testing.T) {
 
 	// Create a node without starting it (no network operations needed)
-	node := CreateNodeWithBully("127.0.0.1", 9999, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9999, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 
@@ -59,7 +59,7 @@ func TestLockTimeout(t *testing.T) {
 /* Check if lock request is not removed from queue if it is not expired */
 func TestLockNotTimedOut(t *testing.T) {
 	// Create a node without starting it
-	node := CreateNodeWithBully("127.0.0.1", 9998, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9998, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 
@@ -93,7 +93,7 @@ func TestLockNotTimedOut(t *testing.T) {
 /* Check if lock request is removed from queue when node dies */
 func TestLockReleasedWhenNodeDies(t *testing.T) {
 	// Create our local node
-	node := CreateNodeWithBully("127.0.0.1", 9997, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9997, common.RoleStorage, 1)
 
 	resourceID := "shared-resource"
 
@@ -173,7 +173,7 @@ func TestLockReleasedWhenNodeDies(t *testing.T) {
 
 /* Check if lock requests are sorted by logical time */
 func TestLockQueueOrdering(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9996, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9996, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 
@@ -235,7 +235,7 @@ func TestLockQueueOrdering(t *testing.T) {
 
 /* Check if node can enter critical section when it is first in queue with all acks */
 func TestCanEnterCriticalSection_FirstInQueueWithAllAcks(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9995, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9995, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 
@@ -288,7 +288,7 @@ func TestCanEnterCriticalSection_FirstInQueueWithAllAcks(t *testing.T) {
 
 /* Check if node cannot enter critical section when it is not first in queue */
 func TestCanEnterCriticalSection_NotFirstInQueue(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9994, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9994, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 
@@ -338,7 +338,7 @@ func TestCanEnterCriticalSection_NotFirstInQueue(t *testing.T) {
 
 /* Check if node cannot enter critical section when it is missing acks */
 func TestCanEnterCriticalSection_MissingAcks(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9993, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9993, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 
@@ -391,7 +391,7 @@ func TestCanEnterCriticalSection_MissingAcks(t *testing.T) {
 
 /* Check if node can enter critical section when no peers exist */
 func TestCanEnterCriticalSection_NoPeers(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9992, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9992, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 
@@ -419,7 +419,7 @@ func TestCanEnterCriticalSection_NoPeers(t *testing.T) {
 
 /* Check if lock request is removed from queue when lock is released */
 func TestReleaseLock_RemovesFromQueue(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9991, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9991, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 
@@ -466,7 +466,7 @@ func TestReleaseLock_RemovesFromQueue(t *testing.T) {
 
 /* Check if node can enter critical section for multiple resources */
 func TestMultipleResourceLocks(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9990, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9990, common.RoleStorage, 1)
 
 	resource1 := "file1.txt"
 	resource2 := "file2.txt"
@@ -511,7 +511,7 @@ func TestMultipleResourceLocks(t *testing.T) {
 
 /* Check if EnterCriticalSection returns true when conditions are met */
 func TestEnterCriticalSection_Success(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9989, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9989, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 
@@ -537,7 +537,7 @@ func TestEnterCriticalSection_Success(t *testing.T) {
 
 /* Check if EnterCriticalSection returns false when conditions are not met */
 func TestEnterCriticalSection_Failure_NotFirstInQueue(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9988, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9988, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 	otherNodeID := uuid.New()
@@ -573,7 +573,7 @@ func TestEnterCriticalSection_Failure_NotFirstInQueue(t *testing.T) {
 
 /* Check if handleLockAcquired updates lockHolders correctly */
 func TestHandleLockAcquired_UpdatesLockHolders(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9987, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9987, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 	holderID := uuid.New()
@@ -604,7 +604,7 @@ func TestHandleLockAcquired_UpdatesLockHolders(t *testing.T) {
 
 /* Check if handleLockRelease removes from lockHolders */
 func TestHandleLockRelease_RemovesFromLockHolders(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9986, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9986, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 	holderID := uuid.New()
@@ -650,7 +650,7 @@ func TestHandleLockRelease_RemovesFromLockHolders(t *testing.T) {
 
 /* Check if Wait-For Graph edge is added when lock request comes in and holder exists */
 func TestWaitForGraph_EdgeAddedOnLockRequest(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9985, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9985, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 	holderID := uuid.New()
@@ -705,7 +705,7 @@ func TestWaitForGraph_EdgeAddedOnLockRequest(t *testing.T) {
 
 /* Check if Wait-For Graph edge is NOT added when no holder exists */
 func TestWaitForGraph_NoEdgeWhenNoHolder(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9984, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9984, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 	waiterID := uuid.New()
@@ -752,7 +752,7 @@ func TestWaitForGraph_NoEdgeWhenNoHolder(t *testing.T) {
 
 /* Check if Wait-For Graph edges are removed when lock is released */
 func TestWaitForGraph_EdgesRemovedOnRelease(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9983, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9983, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 	holderID := uuid.New()
@@ -800,7 +800,7 @@ func TestWaitForGraph_EdgesRemovedOnRelease(t *testing.T) {
 
 /* Check if Wait-For Graph preserves edges to other nodes on release */
 func TestWaitForGraph_PreservesOtherEdgesOnRelease(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9982, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9982, common.RoleStorage, 1)
 
 	resourceID := "test-resource"
 	holderID := uuid.New()
@@ -849,7 +849,7 @@ func TestWaitForGraph_PreservesOtherEdgesOnRelease(t *testing.T) {
 
 /* Check if Wait-For Graph detects simple cycle */
 func TestWaitForGraph_DetectsCycle(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9981, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9981, common.RoleStorage, 1)
 
 	nodeA := uuid.New()
 	nodeB := uuid.New()
@@ -876,7 +876,7 @@ func TestWaitForGraph_DetectsCycle(t *testing.T) {
 
 /* Check if Wait-For Graph reports no cycle when none exists */
 func TestWaitForGraph_NoCycleWhenLinear(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9980, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9980, common.RoleStorage, 1)
 
 	nodeA := uuid.New()
 	nodeB := uuid.New()
@@ -901,7 +901,7 @@ func TestWaitForGraph_NoCycleWhenLinear(t *testing.T) {
 
 /* Check if handleLockAbort releases all locks held by node */
 func TestHandleLockAbort_ReleasesAllLocks(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9979, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9979, common.RoleStorage, 1)
 
 	resource1 := "file1.txt"
 	resource2 := "file2.txt"
@@ -955,7 +955,7 @@ func TestHandleLockAbort_ReleasesAllLocks(t *testing.T) {
 
 /* Check if handleLockAbort does nothing when node has no locks */
 func TestHandleLockAbort_NoLocksToRelease(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9978, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9978, common.RoleStorage, 1)
 
 	// No locks set up
 
@@ -979,7 +979,7 @@ func TestHandleLockAbort_NoLocksToRelease(t *testing.T) {
 
 /* Check if selectVictim returns node with lowest priority */
 func TestSelectVictim_LowestPriority(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9977, common.RoleMaster, 10) // high priority
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9977, common.RoleMaster, 10) // high priority
 
 	// Add peers with different priorities
 	lowPriorityNode := uuid.New()
@@ -1016,7 +1016,7 @@ func TestSelectVictim_LowestPriority(t *testing.T) {
 
 /* Check if selectVictim returns self when self has lowest priority */
 func TestSelectVictim_SelfIsVictim(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9976, common.RoleMaster, 1) // lowest priority
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9976, common.RoleMaster, 1) // lowest priority
 
 	peerID := uuid.New()
 	node.AddPeer(&common.NodeInfo{
@@ -1040,7 +1040,7 @@ func TestSelectVictim_SelfIsVictim(t *testing.T) {
 
 /* Check if selectVictim handles unknown nodes gracefully */
 func TestSelectVictim_UnknownNodeInCycle(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9975, common.RoleMaster, 5)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9975, common.RoleMaster, 5)
 
 	knownPeerID := uuid.New()
 	unknownPeerID := uuid.New() // not added to peers
@@ -1069,7 +1069,7 @@ func TestSelectVictim_UnknownNodeInCycle(t *testing.T) {
 /* Check if checkDeadlocks only runs on master */
 func TestCheckDeadlocks_OnlyRunsOnMaster(t *testing.T) {
 	// Create storage node (not master)
-	node := CreateNodeWithBully("127.0.0.1", 9974, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9974, common.RoleStorage, 1)
 
 	// Setup a cycle that should be detected
 	nodeA := uuid.New()
@@ -1097,7 +1097,7 @@ func TestCheckDeadlocks_OnlyRunsOnMaster(t *testing.T) {
 /* Check if checkDeadlocks detects and handles cycle on master */
 func TestCheckDeadlocks_MasterDetectsCycle(t *testing.T) {
 	// Create master node
-	node := CreateNodeWithBully("127.0.0.1", 9973, common.RoleMaster, 10)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9973, common.RoleMaster, 10)
 
 	// Add a peer that will be the victim (lower priority)
 	victimID := uuid.New()
@@ -1127,7 +1127,7 @@ func TestCheckDeadlocks_MasterDetectsCycle(t *testing.T) {
 
 /* Check if sendAbort handles self-abort correctly */
 func TestSendAbort_SelfAbort(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9972, common.RoleMaster, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9972, common.RoleMaster, 1)
 
 	resourceID := "test-resource"
 
@@ -1154,7 +1154,7 @@ func TestSendAbort_SelfAbort(t *testing.T) {
 
 /* Check if sendAbort handles unknown peer gracefully */
 func TestSendAbort_UnknownPeer(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9971, common.RoleMaster, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9971, common.RoleMaster, 1)
 
 	unknownPeerID := uuid.New() // not in peers
 
@@ -1166,7 +1166,7 @@ func TestSendAbort_UnknownPeer(t *testing.T) {
 
 /* Test SetRole initializes master resources when becoming master */
 func TestSetRole_BecomeMaster(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9970, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9970, common.RoleStorage, 1)
 
 	// Initially storage node - no hashRing
 	if node.hashRing != nil {
@@ -1191,7 +1191,7 @@ func TestSetRole_BecomeMaster(t *testing.T) {
 /* Test SetRole cleans up master resources when becoming storage */
 func TestSetRole_BecomeStorage(t *testing.T) {
 	// Create as storage first, then become master, then back to storage
-	node := CreateNodeWithBully("127.0.0.1", 9969, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9969, common.RoleStorage, 1)
 
 	// Become master first
 	node.SetRole(common.RoleMaster)
@@ -1214,7 +1214,7 @@ func TestSetRole_BecomeStorage(t *testing.T) {
 
 /* Test SetRole adds existing storage peers to hashRing */
 func TestSetRole_AddsExistingPeersToHashRing(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9968, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9968, common.RoleStorage, 1)
 
 	// Add some storage peers before becoming master
 	storagePeer1 := &common.NodeInfo{
@@ -1258,7 +1258,7 @@ func TestSetRole_AddsExistingPeersToHashRing(t *testing.T) {
 /* Test handleNodeJoined adds storage node to hashRing */
 func TestHandleNodeJoined_AddsToHashRing(t *testing.T) {
 	// Create as storage, then become master to properly init hashRing
-	node := CreateNodeWithBully("127.0.0.1", 9967, common.RoleStorage, 10)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9967, common.RoleStorage, 10)
 	node.SetRole(common.RoleMaster) // init hashRing
 
 	initialCount := node.hashRing.GetNodeCount()
@@ -1288,182 +1288,11 @@ func TestHandleNodeJoined_AddsToHashRing(t *testing.T) {
 	}
 }
 
-/* Test handleFileStoreAck tracks ACKs correctly */
-func TestHandleFileStoreAck_TracksAcks(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9966, common.RoleStorage, 10)
-	node.SetRole(common.RoleMaster)
-
-	fileID := uuid.New()
-	storageNode1 := uuid.New()
-	storageNode2 := uuid.New()
-
-	// Setup pending upload
-	node.pendingUploads[fileID] = &common.PendingUpload{
-		FileID:        fileID,
-		Filename:      "test.txt",
-		ExpectedNodes: []uuid.UUID{storageNode1, storageNode2},
-		ReceivedAcks:  make(map[uuid.UUID]string),
-	}
-
-	// First ACK
-	response1 := common.FileStoreResponse{
-		FileID: fileID,
-		Hash:   "abc123",
-	}
-	payload1, _ := json.Marshal(response1)
-	msg1 := common.Message{
-		Type:    common.MessageFileStoreAck,
-		From:    storageNode1,
-		Payload: payload1,
-	}
-	node.handleFileStoreAck(msg1)
-
-	// Should still be pending (waiting for second ACK)
-	node.pendingUploadsMutex.RLock()
-	_, stillPending := node.pendingUploads[fileID]
-	acksCount := len(node.pendingUploads[fileID].ReceivedAcks)
-	node.pendingUploadsMutex.RUnlock()
-
-	if !stillPending {
-		t.Error("upload should still be pending after first ACK")
-	}
-	if acksCount != 1 {
-		t.Errorf("expected 1 ACK, got %d", acksCount)
-	}
-
-	// Second ACK
-	response2 := common.FileStoreResponse{
-		FileID: fileID,
-		Hash:   "abc123",
-	}
-	payload2, _ := json.Marshal(response2)
-	msg2 := common.Message{
-		Type:    common.MessageFileStoreAck,
-		From:    storageNode2,
-		Payload: payload2,
-	}
-	node.handleFileStoreAck(msg2)
-
-	// Should be completed and removed
-	node.pendingUploadsMutex.RLock()
-	_, stillPending = node.pendingUploads[fileID]
-	node.pendingUploadsMutex.RUnlock()
-
-	if stillPending {
-		t.Error("upload should be completed after all ACKs")
-	}
-}
-
-/* Test handleFileStoreAck detects hash mismatch */
-func TestHandleFileStoreAck_DetectsHashMismatch(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9965, common.RoleStorage, 10)
-	node.SetRole(common.RoleMaster)
-
-	fileID := uuid.New()
-	storageNode1 := uuid.New()
-	storageNode2 := uuid.New()
-
-	// Setup pending upload
-	node.pendingUploads[fileID] = &common.PendingUpload{
-		FileID:        fileID,
-		Filename:      "test.txt",
-		ExpectedNodes: []uuid.UUID{storageNode1, storageNode2},
-		ReceivedAcks:  make(map[uuid.UUID]string),
-	}
-
-	// First ACK with hash "abc"
-	response1 := common.FileStoreResponse{FileID: fileID, Hash: "abc"}
-	payload1, _ := json.Marshal(response1)
-	node.handleFileStoreAck(common.Message{Type: common.MessageFileStoreAck, From: storageNode1, Payload: payload1})
-
-	// Second ACK with different hash "xyz" - should log warning but still complete
-	response2 := common.FileStoreResponse{FileID: fileID, Hash: "xyz"}
-	payload2, _ := json.Marshal(response2)
-	node.handleFileStoreAck(common.Message{Type: common.MessageFileStoreAck, From: storageNode2, Payload: payload2})
-
-	// Should be completed (removed from pending) even with mismatch
-	node.pendingUploadsMutex.RLock()
-	_, stillPending := node.pendingUploads[fileID]
-	node.pendingUploadsMutex.RUnlock()
-
-	if stillPending {
-		t.Error("upload should be completed even with hash mismatch")
-	}
-}
-
-/* Test handleFileStoreAck ignores unknown FileID */
-func TestHandleFileStoreAck_IgnoresUnknownFileID(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9964, common.RoleStorage, 10)
-	node.SetRole(common.RoleMaster)
-
-	// Don't setup any pending upload
-	unknownFileID := uuid.New()
-
-	response := common.FileStoreResponse{FileID: unknownFileID, Hash: "abc"}
-	payload, _ := json.Marshal(response)
-	msg := common.Message{
-		Type:    common.MessageFileStoreAck,
-		From:    uuid.New(),
-		Payload: payload,
-	}
-
-	// Should not panic
-	node.handleFileStoreAck(msg)
-}
-
-/* Test StoreFile creates pending upload and selects nodes */
-func TestStoreFile_CreatesPendingUpload(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9963, common.RoleStorage, 10)
-	node.SetRole(common.RoleMaster)
-
-	// Add some storage nodes to hashRing
-	for i := 0; i < 5; i++ {
-		storageNode := common.NodeInfo{
-			ID:       uuid.New(),
-			IP:       "10.0.0." + string(rune('1'+i)),
-			Port:     8000 + i,
-			Role:     common.RoleStorage,
-			Status:   common.StatusOnline,
-			Priority: i,
-		}
-		node.hashRing.AddNode(storageNode)
-	}
-
-	fileID := uuid.New()
-	filename := "test-file.txt"
-	data := []byte("test content")
-
-	// Call StoreFile (will try to send messages but fail - no actual network)
-	node.StoreFile(fileID, filename, "text/plain", data)
-
-	// Check pending upload was created
-	node.pendingUploadsMutex.RLock()
-	pending, exists := node.pendingUploads[fileID]
-	node.pendingUploadsMutex.RUnlock()
-
-	if !exists {
-		t.Fatal("pending upload should be created")
-	}
-
-	if pending.FileID != fileID {
-		t.Errorf("expected FileID %s, got %s", fileID, pending.FileID)
-	}
-	if pending.Filename != filename {
-		t.Errorf("expected Filename %s, got %s", filename, pending.Filename)
-	}
-	if len(pending.ExpectedNodes) != 3 {
-		t.Errorf("expected 3 expected nodes, got %d", len(pending.ExpectedNodes))
-	}
-	if pending.ReceivedAcks == nil {
-		t.Error("ReceivedAcks should be initialized")
-	}
-}
-
 // ============== METADATA SYNC TESTS ==============
 
 /* Test handleMetadataRequest returns local file metadata */
 func TestHandleMetadataRequest_ReturnsLocalFiles(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9960, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9960, common.RoleStorage, 1)
 
 	// Add a peer (master) that will receive the response
 	masterID := uuid.New()
@@ -1494,7 +1323,7 @@ func TestHandleMetadataRequest_ReturnsLocalFiles(t *testing.T) {
 
 /* Test handleMetadataResponse updates globalFileIndex (master only) */
 func TestHandleMetadataResponse_UpdatesGlobalIndex(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9959, common.RoleStorage, 10)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9959, common.RoleStorage, 10)
 	node.SetRole(common.RoleMaster) // init master resources
 
 	storageNodeID := uuid.New()
@@ -1543,7 +1372,7 @@ func TestHandleMetadataResponse_UpdatesGlobalIndex(t *testing.T) {
 
 /* Test handleMetadataResponse merges replicas for same file */
 func TestHandleMetadataResponse_MergesReplicas(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9958, common.RoleStorage, 10)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9958, common.RoleStorage, 10)
 	node.SetRole(common.RoleMaster)
 
 	storageNode1 := uuid.New()
@@ -1589,7 +1418,7 @@ func TestHandleMetadataResponse_MergesReplicas(t *testing.T) {
 
 /* Test handleMetadataResponse ignores duplicate node in replicas */
 func TestHandleMetadataResponse_IgnoresDuplicateReplica(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9957, common.RoleStorage, 10)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9957, common.RoleStorage, 10)
 	node.SetRole(common.RoleMaster)
 
 	storageNodeID := uuid.New()
@@ -1624,7 +1453,7 @@ func TestHandleMetadataResponse_IgnoresDuplicateReplica(t *testing.T) {
 
 /* Test handleMetadataResponse is ignored by non-master nodes */
 func TestHandleMetadataResponse_IgnoredByNonMaster(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9956, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9956, common.RoleStorage, 1)
 	// Don't set as master - stays as storage
 
 	response := common.MetadataResponse{
@@ -1648,7 +1477,7 @@ func TestHandleMetadataResponse_IgnoredByNonMaster(t *testing.T) {
 
 /* Test verifyAndRepairReplication detects insufficient replicas */
 func TestVerifyAndRepairReplication_DetectsInsufficientReplicas(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9955, common.RoleStorage, 10)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9955, common.RoleStorage, 10)
 	node.SetRole(common.RoleMaster)
 
 	// Add storage nodes to hashRing
@@ -1685,7 +1514,7 @@ func TestVerifyAndRepairReplication_DetectsInsufficientReplicas(t *testing.T) {
 
 /* Test verifyAndRepairReplication with all files having sufficient replicas */
 func TestVerifyAndRepairReplication_AllFilesOK(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9954, common.RoleStorage, 10)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9954, common.RoleStorage, 10)
 	node.SetRole(common.RoleMaster)
 
 	// Add file with 3 replicas (sufficient)
@@ -1704,7 +1533,7 @@ func TestVerifyAndRepairReplication_AllFilesOK(t *testing.T) {
 
 /* Test initiateReplication skips when no missing nodes */
 func TestInitiateReplication_SkipsWhenNoMissingNodes(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9953, common.RoleStorage, 10)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9953, common.RoleStorage, 10)
 	node.SetRole(common.RoleMaster)
 
 	// Add storage nodes
@@ -1750,7 +1579,7 @@ func TestInitiateReplication_SkipsWhenNoMissingNodes(t *testing.T) {
 
 /* Test initiateReplication skips when file has no replicas */
 func TestInitiateReplication_SkipsWhenNoReplicas(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9952, common.RoleStorage, 10)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9952, common.RoleStorage, 10)
 	node.SetRole(common.RoleMaster)
 
 	// File with no replicas (data lost)
@@ -1768,7 +1597,7 @@ func TestInitiateReplication_SkipsWhenNoReplicas(t *testing.T) {
 
 /* Test SetRole initializes globalFileIndex when becoming master */
 func TestSetRole_InitializesGlobalFileIndex(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9951, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9951, common.RoleStorage, 1)
 
 	// Storage node should not have globalFileIndex
 	if node.globalFileIndex != nil {
@@ -1786,7 +1615,7 @@ func TestSetRole_InitializesGlobalFileIndex(t *testing.T) {
 
 /* Test SetRole cleans up globalFileIndex when becoming storage */
 func TestSetRole_CleansUpGlobalFileIndex(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9950, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9950, common.RoleStorage, 1)
 	node.SetRole(common.RoleMaster)
 
 	// Add some data
@@ -1805,7 +1634,7 @@ func TestSetRole_CleansUpGlobalFileIndex(t *testing.T) {
 
 /* Test syncMetadataAfterElection only runs once at a time */
 func TestSyncMetadataAfterElection_OnlyRunsOnce(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9949, common.RoleStorage, 10)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9949, common.RoleStorage, 10)
 	node.SetRole(common.RoleMaster)
 
 	// Manually set sync in progress
@@ -1828,7 +1657,7 @@ func TestSyncMetadataAfterElection_OnlyRunsOnce(t *testing.T) {
 
 /* Test handleReplicateFile processes request correctly */
 func TestHandleReplicateFile_ProcessesRequest(t *testing.T) {
-	node := CreateNodeWithBully("127.0.0.1", 9948, common.RoleStorage, 1)
+	node := CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9948, common.RoleStorage, 1)
 
 	// Add target peer
 	targetNodeID := uuid.New()

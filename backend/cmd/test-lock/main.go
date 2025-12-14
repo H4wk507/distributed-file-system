@@ -12,7 +12,7 @@ func main() {
 	ctx := context.Background()
 
 	fmt.Println("\ntest 1: single node")
-	node1 := node.CreateNodeWithBully("localhost", 8001, common.RoleStorage, 1)
+	node1 := node.CreateNodeWithBully("localhost", "localhost", 8001, common.RoleStorage, 1)
 	node1.Start(ctx)
 	time.Sleep(100 * time.Millisecond)
 
@@ -27,10 +27,10 @@ func main() {
 	}
 
 	fmt.Println("\ntest 2: five nodes")
-	node2 := node.CreateNodeWithBully("localhost", 8002, common.RoleStorage, 2)
-	node3 := node.CreateNodeWithBully("localhost", 8003, common.RoleStorage, 3)
-	node4 := node.CreateNodeWithBully("localhost", 8004, common.RoleStorage, 4)
-	node5 := node.CreateNodeWithBully("localhost", 8005, common.RoleStorage, 5)
+	node2 := node.CreateNodeWithBully("localhost", "localhost", 8002, common.RoleStorage, 2)
+	node3 := node.CreateNodeWithBully("localhost", "localhost", 8003, common.RoleStorage, 3)
+	node4 := node.CreateNodeWithBully("localhost", "localhost", 8004, common.RoleStorage, 4)
+	node5 := node.CreateNodeWithBully("localhost", "localhost", 8005, common.RoleStorage, 5)
 	node2.Start(ctx)
 	node3.Start(ctx)
 	node4.Start(ctx)

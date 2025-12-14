@@ -14,8 +14,8 @@ func main() {
 	log.Println()
 
 	log.Println("Creating nodes...")
-	node1 := node.CreateNodeWithBully("127.0.0.1", 9000, common.RoleMaster, 10)
-	node2 := node.CreateNodeWithBully("127.0.0.1", 9001, common.RoleStorage, 5)
+	node1 := node.CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9000, common.RoleMaster, 10)
+	node2 := node.CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9001, common.RoleStorage, 5)
 	log.Printf("Node1 ID: %s", node1.ID)
 	log.Printf("Node2 ID: %s", node2.ID)
 	log.Println()

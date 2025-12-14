@@ -1,26 +1,15 @@
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { formatBytes } from "@/lib/formatters";
+import { useFileUpload } from "@/hooks/useFileUpload";
 import { CheckCircle2, File, Upload, X, XCircle } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
 
-interface UploadingFile {
-  id: string;
-  file: File;
-  progress: number;
-  status: "uploading" | "success" | "error";
-  error?: string;
-}
-
 interface FileUploaderProps {
-  onUploadComplete?: (file: File) => void;
-  maxSize?: number; // in bytes
   acceptedTypes?: string[];
 }
 
-const DEFAULT_MAX_SIZE = 100 * 1024 * 1024; // 100MB
 const DEFAULT_ACCEPTED_TYPES = [
   "image/*",
   "video/*",
@@ -39,51 +28,9 @@ const DEFAULT_ACCEPTED_TYPES = [
 ];
 
 export function FileUploader({
-  onUploadComplete,
-  maxSize = DEFAULT_MAX_SIZE,
   acceptedTypes = DEFAULT_ACCEPTED_TYPES,
 }: FileUploaderProps) {
-  const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
-
-  const simulateUpload = useCallback(
-    (file: File) => {
-      const id = Math.random().toString(36).substring(7);
-
-      setUploadingFiles((prev) => [
-        ...prev,
-        { id, file, progress: 0, status: "uploading" },
-      ]);
-
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += Math.random() * 30;
-        if (progress >= 100) {
-          progress = 100;
-          clearInterval(interval);
-
-          setUploadingFiles((prev) =>
-            prev.map((f) =>
-              f.id === id ? { ...f, progress: 100, status: "success" } : f,
-            ),
-          );
-
-          toast.success("Plik przesłany", { description: file.name });
-          onUploadComplete?.(file);
-
-          setTimeout(() => {
-            setUploadingFiles((prev) => prev.filter((f) => f.id !== id));
-          }, 2000);
-        } else {
-          setUploadingFiles((prev) =>
-            prev.map((f) => (f.id === id ? { ...f, progress } : f)),
-          );
-        }
-      }, 200);
-
-      return () => clearInterval(interval);
-    },
-    [onUploadComplete],
-  );
+  const { uploads, uploadFile, cancelUpload, clearUpload } = useFileUpload();
 
   const onDrop = useCallback(
     (
@@ -98,15 +45,14 @@ export function FileUploader({
       });
 
       acceptedFiles.forEach((file) => {
-        simulateUpload(file);
+        uploadFile(file);
       });
     },
-    [simulateUpload],
+    [uploadFile],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    maxSize,
     accept: acceptedTypes.reduce(
       (acc, type) => {
         acc[type] = [];
@@ -115,11 +61,6 @@ export function FileUploader({
       {} as Record<string, string[]>,
     ),
   });
-
-  const cancelUpload = (id: string) => {
-    setUploadingFiles((prev) => prev.filter((f) => f.id !== id));
-    toast.info("Przesyłanie anulowane");
-  };
 
   return (
     <div className="space-y-4">
@@ -144,24 +85,23 @@ export function FileUploader({
             <p className="text-sm text-muted-foreground">
               Upuść pliki tutaj lub kliknij, aby przeglądać
             </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Maksymalny rozmiar: {formatBytes(maxSize)}
-            </p>
           </>
         )}
       </div>
-      {uploadingFiles.length > 0 && (
+      {uploads.length > 0 && (
         <div className="space-y-3">
-          {uploadingFiles.map((uploadFile) => (
+          {uploads.map((upload) => (
             <div
-              key={uploadFile.id}
+              key={upload.id}
               className="flex items-center gap-3 p-3 rounded-lg border bg-card"
             >
               <div className="shrink-0">
-                {uploadFile.status === "success" ? (
+                {upload.status === "completed" ? (
                   <CheckCircle2 className="w-5 h-5 text-green-500" />
-                ) : uploadFile.status === "error" ? (
+                ) : upload.status === "error" ? (
                   <XCircle className="w-5 h-5 text-destructive" />
+                ) : upload.status === "cancelled" ? (
+                  <XCircle className="w-5 h-5 text-muted-foreground" />
                 ) : (
                   <File className="w-5 h-5 text-muted-foreground" />
                 )}
@@ -169,27 +109,47 @@ export function FileUploader({
 
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">
-                  {uploadFile.file.name}
+                  {upload.fileName}
                 </p>
                 <div className="flex items-center gap-2 mt-1">
-                  <Progress value={uploadFile.progress} className="flex-1" />
+                  <Progress value={upload.progress} className="flex-1" />
                   <span className="text-xs text-muted-foreground shrink-0">
-                    {Math.round(uploadFile.progress)}%
+                    {Math.round(upload.progress)}%
                   </span>
                 </div>
-                {uploadFile.error && (
+                {upload.error && (
                   <p className="text-xs text-destructive mt-1">
-                    {uploadFile.error}
+                    {upload.error}
+                  </p>
+                )}
+                {upload.status === "cancelled" && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Anulowano
                   </p>
                 )}
               </div>
 
-              {uploadFile.status === "uploading" && (
+              {(upload.status === "uploading" ||
+                upload.status === "pending") && (
                 <Button
                   variant="ghost"
                   size="icon"
                   className="shrink-0 h-8 w-8"
-                  onClick={() => cancelUpload(uploadFile.id)}
+                  onClick={() => cancelUpload(upload.id)}
+                  title="Anuluj"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              )}
+              {(upload.status === "completed" ||
+                upload.status === "error" ||
+                upload.status === "cancelled") && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 h-8 w-8"
+                  onClick={() => clearUpload(upload.id)}
+                  title="Usuń"
                 >
                   <X className="w-4 h-4" />
                 </Button>

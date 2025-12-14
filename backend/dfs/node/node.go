@@ -1,13 +1,13 @@
 package node
 
 import (
-	"bytes"
 	"context"
 	"dfs-backend/dfs/common"
 	. "dfs-backend/dfs/common"
 	"dfs-backend/dfs/election"
 	"dfs-backend/dfs/hashing"
 	"dfs-backend/dfs/storage"
+	"dfs-backend/dfs/streaming"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,12 +21,13 @@ import (
 )
 
 type Node struct {
-	ID       uuid.UUID
-	IP       string
-	Port     int
-	Role     NodeRole
-	Status   NodeStatus
-	Priority int
+	ID          uuid.UUID
+	IP          string // Bind IP (for listening)
+	AdvertiseIP string // Advertise IP (for peer communication)
+	Port        int
+	Role        NodeRole
+	Status      NodeStatus
+	Priority    int
 
 	elector election.Elector
 
@@ -53,12 +54,6 @@ type Node struct {
 
 	storage *storage.LocalStorage
 
-	pendingUploads      map[uuid.UUID]*common.PendingUpload // tylko dla master, nil dla storage nodes
-	pendingUploadsMutex sync.RWMutex
-
-	pendingRetrieves      map[string]chan *common.FileRetrieveResponse // key = filename
-	pendingRetrievesMutex sync.RWMutex
-
 	globalFileIndex      map[string]*common.GlobalFileInfo // key = hash, tylko master
 	globalFileIndexMutex sync.RWMutex
 
@@ -68,34 +63,89 @@ type Node struct {
 	pendingMetadataSync      *common.MetadataSyncState
 	pendingMetadataSyncMutex sync.Mutex
 
+	streamServer *streaming.StreamServer
+
+	// Streaming sessions for master node
+	streamingSessions      map[string]*common.StreamSession
+	streamingSessionsMutex sync.RWMutex
+
 	logger *log.Logger
 }
 
-func CreateNodeWithBully(ip string, port int, role NodeRole, priority int) *Node {
+func CreateNodeWithBully(bindIP, advertiseIP string, port int, role NodeRole, priority int) *Node {
 	n := &Node{
-		ID:               uuid.New(),
-		IP:               ip,
-		Port:             port,
-		Status:           StatusStarting,
-		Priority:         priority,
-		peers:            make(map[uuid.UUID]*NodeInfo),
-		messageChan:      make(chan common.Message, 100),
-		stopChan:         make(chan struct{}),
-		logicalTime:      0,
-		lockQueue:        make(map[string][]*LockRequest),
-		pendingAcks:      make(map[string]map[uuid.UUID]bool),
-		lockHolders:      make(map[string]uuid.UUID),
-		waitForGraph:     make(map[uuid.UUID]map[uuid.UUID]bool),
-		pendingRetrieves: make(map[string]chan *common.FileRetrieveResponse),
-		logger:           log.New(log.Writer(), fmt.Sprintf("[Node %s] ", role), log.LstdFlags),
+		ID:                uuid.New(),
+		IP:                bindIP,
+		AdvertiseIP:       advertiseIP,
+		Port:              port,
+		Status:            StatusStarting,
+		Priority:          priority,
+		peers:             make(map[uuid.UUID]*NodeInfo),
+		messageChan:       make(chan common.Message, 100),
+		stopChan:          make(chan struct{}),
+		logicalTime:       0,
+		lockQueue:         make(map[string][]*LockRequest),
+		pendingAcks:       make(map[string]map[uuid.UUID]bool),
+		lockHolders:       make(map[string]uuid.UUID),
+		waitForGraph:      make(map[uuid.UUID]map[uuid.UUID]bool),
+		streamingSessions: make(map[string]*common.StreamSession),
+		logger:            log.New(log.Writer(), fmt.Sprintf("[Node %s] ", role), log.LstdFlags),
 	}
 
 	n.storage = storage.NewLocalStorage(fmt.Sprintf("./data/node-%s", n.ID))
 	n.elector = election.NewBullyElector(n)
 
+	streamPort := port + streaming.StreamPortOffset
+	n.streamServer = streaming.NewStreamServer(streamPort, n.storage, n.logger)
+	n.streamServer.SetUploadCompleteCallback(n.onStreamUploadComplete)
+
 	n.SetRole(role)
 
 	return n
+}
+
+// onStreamUploadComplete is called when a file upload is completed on this storage node
+func (n *Node) onStreamUploadComplete(sessionID, fileID, hash string) {
+	n.logger.Printf("Upload complete callback: session=%s, fileID=%s, hash=%s", sessionID, fileID, hash)
+
+	n.peerMutex.RLock()
+	var masterPeer *NodeInfo
+	for _, peer := range n.peers {
+		if peer.Role == common.RoleMaster {
+			masterPeer = peer
+			break
+		}
+	}
+	n.peerMutex.RUnlock()
+
+	if masterPeer == nil {
+		n.logger.Printf("No master found to send upload ack")
+		return
+	}
+
+	fileUUID, err := uuid.Parse(fileID)
+	if err != nil {
+		n.logger.Printf("Invalid fileID: %s", fileID)
+		return
+	}
+
+	ack := common.StreamStoreAck{
+		SessionID: sessionID,
+		FileID:    fileUUID,
+		Hash:      hash,
+		NodeID:    n.ID,
+		Success:   true,
+	}
+
+	payload, _ := json.Marshal(ack)
+	msg := common.Message{
+		Type:    common.MessageStreamStoreAck,
+		From:    n.ID,
+		To:      masterPeer.ID,
+		Payload: payload,
+	}
+
+	go n.SendMessage(masterPeer.IP, masterPeer.Port, msg)
 }
 
 func (n *Node) Start(ctx context.Context) error {
@@ -109,6 +159,10 @@ func (n *Node) Start(ctx context.Context) error {
 	n.SetRole(n.Role)
 	n.storage.LoadIndex()
 	n.logger.Printf("Node started on %s (ID: %s, Priority: %d)", addr, n.ID, n.Priority)
+
+	if err := n.streamServer.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start stream server: %w", err)
+	}
 
 	go n.acceptConnections(ctx)
 	go n.handleMessages(ctx)
@@ -126,6 +180,12 @@ func (n *Node) Start(ctx context.Context) error {
 func (n *Node) Stop() error {
 	n.Status = StatusStopping
 	close(n.stopChan)
+
+	if n.streamServer != nil {
+		if err := n.streamServer.Stop(); err != nil {
+			n.logger.Printf("Failed to stop stream server: %v", err)
+		}
+	}
 
 	if n.listener != nil {
 		if err := n.listener.Close(); err != nil {
@@ -167,7 +227,9 @@ func (n *Node) handleConnection(conn net.Conn) {
 	decoder := json.NewDecoder(conn)
 	var msgWithTime MessageWithTime
 	if err := decoder.Decode(&msgWithTime); err != nil {
-		n.logger.Printf("Failed to decode message: %v", err)
+		if err != io.EOF {
+			n.logger.Printf("Failed to decode message: %v", err)
+		}
 		return
 	}
 
@@ -177,14 +239,14 @@ func (n *Node) handleConnection(conn net.Conn) {
 	case MessageDiscovery:
 		n.handleDiscoveryWithConnection(msgWithTime.Message, conn)
 		return
-	case common.MessageAPIFileUpload:
-		n.handleAPIFileUpload(msgWithTime.Message, conn)
-		return
-	case common.MessageAPIFileDownload:
-		n.handleAPIFileDownload(msgWithTime.Message, conn)
-		return
 	case common.MessageAPIFileDelete:
 		n.handleAPIFileDelete(msgWithTime.Message, conn)
+		return
+	case common.MessageStreamUploadInit:
+		n.handleStreamUploadInit(msgWithTime.Message, conn)
+		return
+	case common.MessageStreamDownloadInit:
+		n.handleStreamDownloadInit(msgWithTime.Message, conn)
 		return
 	}
 
@@ -235,14 +297,6 @@ func (n *Node) processMessage(ctx context.Context, msg common.Message) {
 		n.handleLockRelease(msg)
 	case MessageLockAbort:
 		n.handleLockAbort(msg)
-	case MessageFileStore:
-		n.handleFileStore(msg)
-	case MessageFileStoreAck:
-		n.handleFileStoreAck(msg)
-	case MessageFileRetrieve:
-		n.handleFileRetrieve(msg)
-	case MessageFileRetrieveResponse:
-		n.handleFileRetrieveResponse(msg)
 	case MessageFileDelete:
 		n.handleFileDelete(msg)
 	case common.MessageMetadataRequest:
@@ -251,6 +305,10 @@ func (n *Node) processMessage(ctx context.Context, msg common.Message) {
 		n.handleMetadataResponse(msg)
 	case common.MessageReplicateFile:
 		n.handleReplicateFile(msg)
+	case common.MessageStreamStoreAck:
+		n.handleStreamStoreAck(msg)
+	case common.MessageStreamUploadReady:
+		n.handleStreamUploadReady(msg)
 	default:
 		n.logger.Printf("Received msg of type %s from %s", msg.Type, msg.From)
 	}
@@ -460,171 +518,6 @@ func (n *Node) handleLockAbort(msg Message) {
 	}
 }
 
-// TODO: what about very big files?
-func (n *Node) handleFileStore(msg Message) {
-	var fileRequest common.FileStoreRequest
-	if err := json.Unmarshal(msg.Payload, &fileRequest); err != nil {
-		n.logger.Printf("Failed to unmarshal FileStoreRequest payload: %v", err)
-		return
-	}
-
-	r := bytes.NewReader(fileRequest.Data)
-	meta, err := n.storage.SaveFile(fileRequest.FileID, fileRequest.Filename, fileRequest.ContentType, r)
-	if err != nil {
-		n.logger.Printf("Failed to save file %s to storage: %v", fileRequest.Filename, err)
-		return
-	}
-
-	peer, exists := n.GetPeer(msg.From)
-	if !exists {
-		n.logger.Printf("Peer %s not found", msg.From)
-		return
-	}
-
-	fileStoreResponsePayload := common.FileStoreResponse{
-		Hash:   meta.Hash,
-		FileID: meta.FileID,
-	}
-	payload, err := json.Marshal(fileStoreResponsePayload)
-	if err != nil {
-		n.logger.Printf("Failed to marshal fileStoreResponsePayload: %v", err)
-		return
-	}
-
-	ackMsg := Message{
-		Type:    common.MessageFileStoreAck,
-		From:    n.ID,
-		To:      peer.ID,
-		Payload: payload,
-	}
-	go n.SendMessage(peer.IP, peer.Port, ackMsg)
-}
-
-func (n *Node) handleFileStoreAck(msg Message) {
-	var fileResponse common.FileStoreResponse
-	if err := json.Unmarshal(msg.Payload, &fileResponse); err != nil {
-		n.logger.Printf("Failed to unmarshal FileStoreResponse request: %v", err)
-		return
-	}
-
-	n.pendingUploadsMutex.Lock()
-	defer n.pendingUploadsMutex.Unlock()
-	pending, exists := n.pendingUploads[fileResponse.FileID]
-	if !exists {
-		n.logger.Printf("FileID '%s' was not found in pendingUploads", fileResponse.FileID.String())
-		return
-	}
-
-	pending.ReceivedAcks[msg.From] = fileResponse.Hash
-	if len(pending.ReceivedAcks) == len(pending.ExpectedNodes) {
-		var firstHash string
-		for _, firstHash = range pending.ReceivedAcks {
-			break
-		}
-		for _, hash := range pending.ReceivedAcks {
-			if hash != firstHash {
-				n.logger.Print("Hashes of the uploaded files differ!")
-			}
-		}
-
-		delete(n.pendingUploads, fileResponse.FileID)
-		n.logger.Printf("File %s uploaded successfully to %d nodes", pending.Filename, len(pending.ExpectedNodes))
-	}
-}
-
-func (n *Node) handleFileRetrieve(msg Message) {
-	var request common.FileRetrieveRequest
-	if err := json.Unmarshal(msg.Payload, &request); err != nil {
-		n.logger.Printf("failed to unmarshal FileRetrieveRequest payload: %v", err)
-		return
-	}
-
-	peer, exists := n.GetPeer(msg.From)
-	if !exists {
-		n.logger.Printf("peer %s does not exist", msg.From)
-		return
-	}
-
-	sendError := func(err string) {
-		response := common.FileRetrieveResponse{
-			RequestID: request.RequestID,
-			Hash:      request.Hash,
-			Error:     err,
-		}
-		payload, _ := json.Marshal(response)
-		errorMsg := common.Message{
-			Type:    common.MessageFileRetrieveResponse,
-			From:    n.ID,
-			To:      peer.ID,
-			Payload: payload,
-		}
-		go n.SendMessage(peer.IP, peer.Port, errorMsg)
-	}
-
-	reader, meta, err := n.storage.GetFile(request.Hash)
-	if err != nil {
-		n.logger.Printf("error while getting file with hash '%s': %v", request.Hash, err)
-		sendError(fmt.Sprintf("file not found: %v", err))
-		return
-	}
-	defer reader.Close()
-
-	// TODO: what about big files?
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		errMsg := fmt.Sprintf("failed to read file: %v", err)
-		n.logger.Print(errMsg)
-		sendError(errMsg)
-		return
-	}
-
-	response := common.FileRetrieveResponse{
-		RequestID: request.RequestID,
-		FileID:    meta.FileID,
-		Filename:  meta.Filename,
-		Hash:      meta.Hash,
-		Data:      data,
-	}
-	payload, err := json.Marshal(response)
-	if err != nil {
-		errMsg := fmt.Sprintf("failed to marshal FileRetrieveResponse: %v", err)
-		n.logger.Print(errMsg)
-		sendError(errMsg)
-		return
-	}
-
-	responseMsg := common.Message{
-		Type:    common.MessageFileRetrieveResponse,
-		From:    n.ID,
-		To:      peer.ID,
-		Payload: payload,
-	}
-	go n.SendMessage(peer.IP, peer.Port, responseMsg)
-}
-
-func (n *Node) handleFileRetrieveResponse(msg Message) {
-	var response common.FileRetrieveResponse
-	if err := json.Unmarshal(msg.Payload, &response); err != nil {
-		n.logger.Printf("Failed to unmarshal FileRetrieveResponse: %v", err)
-		return
-	}
-
-	n.logger.Printf("Received file %s (%d bytes)", response.Filename, len(response.Data))
-
-	n.pendingRetrievesMutex.RLock()
-	ch, exists := n.pendingRetrieves[response.RequestID]
-	n.pendingRetrievesMutex.RUnlock()
-
-	if exists {
-		select {
-		case ch <- &response:
-			n.logger.Printf("Delivered file %s to waiting request", response.Filename)
-		default:
-			n.logger.Printf("No receiver waiting for file %s", response.Filename)
-		}
-	}
-}
-
 func (n *Node) handleFileDelete(msg Message) {
 	var hash string
 	if err := json.Unmarshal(msg.Payload, &hash); err != nil {
@@ -781,6 +674,253 @@ func (n *Node) handleReplicateFile(msg Message) {
 	}
 
 	n.logger.Printf("Initiated replication of file %s to %d nodes", request.Hash, len(request.TargetNodes))
+}
+
+func (n *Node) handleStreamUploadInit(msg common.Message, conn net.Conn) {
+	var request common.StreamUploadInitRequest
+	if err := json.Unmarshal(msg.Payload, &request); err != nil {
+		n.sendStreamUploadResponse(conn, msg.From, "", nil, "invalid request payload")
+		return
+	}
+
+	n.logger.Printf("Stream upload init: file=%s size=%d", request.Filename, request.Size)
+
+	if n.Role != common.RoleMaster {
+		n.sendStreamUploadResponse(conn, msg.From, "", nil, "node is not master")
+		return
+	}
+
+	if n.hashRing == nil || n.hashRing.GetNodeCount() == 0 {
+		n.sendStreamUploadResponse(conn, msg.From, "", nil, "no storage nodes available")
+		return
+	}
+
+	nodes := n.hashRing.FindNodesForFile(request.FileID, 3)
+	if len(nodes) == 0 {
+		n.sendStreamUploadResponse(conn, msg.From, "", nil, "no storage nodes found")
+		return
+	}
+
+	sessionID := uuid.New().String()
+	session := &common.StreamSession{
+		SessionID:     sessionID,
+		FileID:        request.FileID,
+		Filename:      request.Filename,
+		ContentType:   request.ContentType,
+		Size:          request.Size,
+		ExpectedNodes: make([]uuid.UUID, len(nodes)),
+		ReceivedAcks:  make(map[uuid.UUID]string),
+		CreatedAt:     time.Now(),
+		Done:          make(chan struct{}),
+	}
+
+	storageAddrs := make([]common.StorageNodeAddr, len(nodes))
+	for i, node := range nodes {
+		session.ExpectedNodes[i] = node.ID
+		streamAddr := fmt.Sprintf("%s:%d", node.IP, node.Port+streaming.StreamPortOffset)
+		storageAddrs[i] = common.StorageNodeAddr{
+			NodeID: node.ID,
+			Addr:   streamAddr,
+		}
+
+		peer, exists := n.GetPeer(node.ID)
+		if exists {
+			n.createRemoteSession(peer, sessionID, request)
+		}
+	}
+
+	n.streamingSessionsMutex.Lock()
+	n.streamingSessions[sessionID] = session
+	n.streamingSessionsMutex.Unlock()
+
+	n.sendStreamUploadResponse(conn, msg.From, sessionID, storageAddrs, "")
+	n.logger.Printf("Stream upload session created: %s -> %d nodes", sessionID, len(nodes))
+}
+
+func (n *Node) createRemoteSession(peer *common.NodeInfo, sessionID string, request common.StreamUploadInitRequest) {
+	sessionData := struct {
+		SessionID   string    `json:"session_id"`
+		FileID      uuid.UUID `json:"file_id"`
+		Filename    string    `json:"filename"`
+		ContentType string    `json:"content_type"`
+		Size        int64     `json:"size"`
+	}{
+		SessionID:   sessionID,
+		FileID:      request.FileID,
+		Filename:    request.Filename,
+		ContentType: request.ContentType,
+		Size:        request.Size,
+	}
+
+	payload, _ := json.Marshal(sessionData)
+	msg := common.Message{
+		Type:    common.MessageStreamUploadReady,
+		From:    n.ID,
+		To:      peer.ID,
+		Payload: payload,
+	}
+	go n.SendMessage(peer.IP, peer.Port, msg)
+}
+
+func (n *Node) sendStreamUploadResponse(conn net.Conn, to uuid.UUID, sessionID string, storageAddrs []common.StorageNodeAddr, errMsg string) {
+	response := common.StreamUploadReadyResponse{
+		RequestID:    uuid.New().String(),
+		SessionID:    sessionID,
+		StorageNodes: storageAddrs,
+		Success:      errMsg == "",
+		Error:        errMsg,
+	}
+
+	payload, _ := json.Marshal(response)
+	newTime := n.IncrementAndGetLogicalTime()
+	responseMsg := common.MessageWithTime{
+		Message: common.Message{
+			Type:    common.MessageStreamUploadReady,
+			From:    n.ID,
+			To:      to,
+			Payload: payload,
+		},
+		LogicalTime: newTime,
+	}
+
+	encoder := json.NewEncoder(conn)
+	encoder.Encode(responseMsg)
+}
+
+func (n *Node) handleStreamDownloadInit(msg common.Message, conn net.Conn) {
+	var request common.StreamDownloadInitRequest
+	if err := json.Unmarshal(msg.Payload, &request); err != nil {
+		n.sendStreamDownloadResponse(conn, msg.From, request.RequestID, "", "", 0, "", "invalid request payload")
+		return
+	}
+
+	n.logger.Printf("Stream download init: fileID=%s hash=%s", request.FileID, request.Hash)
+
+	if n.Role != common.RoleMaster {
+		n.sendStreamDownloadResponse(conn, msg.From, request.RequestID, "", "", 0, "", "node is not master")
+		return
+	}
+
+	n.globalFileIndexMutex.RLock()
+	fileInfo, exists := n.globalFileIndex[request.Hash]
+	n.globalFileIndexMutex.RUnlock()
+
+	if !exists {
+		n.sendStreamDownloadResponse(conn, msg.From, request.RequestID, "", "", 0, "", "file not found")
+		return
+	}
+
+	if len(fileInfo.Replicas) == 0 {
+		n.sendStreamDownloadResponse(conn, msg.From, request.RequestID, "", "", 0, "", "no replicas available")
+		return
+	}
+
+	var selectedPeer *common.NodeInfo
+	for _, replicaID := range fileInfo.Replicas {
+		peer, exists := n.GetPeer(replicaID)
+		if exists && peer.Status == common.StatusOnline {
+			selectedPeer = peer
+			break
+		}
+	}
+
+	if selectedPeer == nil {
+		n.sendStreamDownloadResponse(conn, msg.From, request.RequestID, "", "", 0, "", "no online replicas")
+		return
+	}
+
+	streamAddr := fmt.Sprintf("%s:%d", selectedPeer.IP, selectedPeer.Port+streaming.StreamPortOffset)
+	n.sendStreamDownloadResponse(conn, msg.From, request.RequestID, streamAddr, fileInfo.Filename, fileInfo.Size, fileInfo.Hash, "")
+	n.logger.Printf("Stream download ready: %s -> %s", request.Hash, streamAddr)
+}
+
+func (n *Node) sendStreamDownloadResponse(conn net.Conn, to uuid.UUID, requestID, storageAddr, filename string, size int64, hash, errMsg string) {
+	response := common.StreamDownloadReadyResponse{
+		RequestID:   requestID,
+		StorageAddr: storageAddr,
+		Filename:    filename,
+		Size:        size,
+		Hash:        hash,
+		Success:     errMsg == "",
+		Error:       errMsg,
+	}
+
+	payload, _ := json.Marshal(response)
+	newTime := n.IncrementAndGetLogicalTime()
+	responseMsg := common.MessageWithTime{
+		Message: common.Message{
+			Type:    common.MessageStreamDownloadReady,
+			From:    n.ID,
+			To:      to,
+			Payload: payload,
+		},
+		LogicalTime: newTime,
+	}
+
+	encoder := json.NewEncoder(conn)
+	encoder.Encode(responseMsg)
+}
+
+func (n *Node) handleStreamStoreAck(msg common.Message) {
+	var ack common.StreamStoreAck
+	if err := json.Unmarshal(msg.Payload, &ack); err != nil {
+		n.logger.Printf("Failed to unmarshal StreamStoreAck: %v", err)
+		return
+	}
+
+	n.streamingSessionsMutex.Lock()
+	session, exists := n.streamingSessions[ack.SessionID]
+	if !exists {
+		n.streamingSessionsMutex.Unlock()
+		n.logger.Printf("Unknown session: %s", ack.SessionID)
+		return
+	}
+
+	session.ReceivedAcks[ack.NodeID] = ack.Hash
+
+	if len(session.ReceivedAcks) >= len(session.ExpectedNodes) {
+		n.globalFileIndexMutex.Lock()
+		n.globalFileIndex[ack.Hash] = &common.GlobalFileInfo{
+			FileID:      session.FileID,
+			Filename:    session.Filename,
+			Hash:        ack.Hash,
+			Size:        session.Size,
+			ContentType: session.ContentType,
+			Replicas:    session.ExpectedNodes,
+		}
+		n.globalFileIndexMutex.Unlock()
+
+		close(session.Done)
+		delete(n.streamingSessions, ack.SessionID)
+		n.logger.Printf("File upload complete: %s (%d replicas)", session.Filename, len(session.ExpectedNodes))
+	}
+	n.streamingSessionsMutex.Unlock()
+}
+
+func (n *Node) handleStreamUploadReady(msg common.Message) {
+	var sessionData struct {
+		SessionID   string    `json:"session_id"`
+		FileID      uuid.UUID `json:"file_id"`
+		Filename    string    `json:"filename"`
+		ContentType string    `json:"content_type"`
+		Size        int64     `json:"size"`
+	}
+	if err := json.Unmarshal(msg.Payload, &sessionData); err != nil {
+		n.logger.Printf("Failed to unmarshal session data: %v", err)
+		return
+	}
+
+	sm := n.streamServer.GetSessionManager()
+	session := &streaming.UploadSession{
+		SessionID:   sessionData.SessionID,
+		FileID:      sessionData.FileID,
+		Filename:    sessionData.Filename,
+		ContentType: sessionData.ContentType,
+		Size:        sessionData.Size,
+		CreatedAt:   time.Now(),
+	}
+	sm.AddSession(session)
+	n.logger.Printf("Session prepared on storage node: %s for file %s", sessionData.SessionID, sessionData.Filename)
 }
 
 func (n *Node) startHeartbeat(ctx context.Context) {
@@ -1099,7 +1239,6 @@ func (n *Node) sendAbort(victim uuid.UUID) {
 
 func (n *Node) initMasterResources() {
 	n.hashRing = hashing.NewHashRing(150)
-	n.pendingUploads = make(map[uuid.UUID]*common.PendingUpload)
 	n.globalFileIndex = make(map[string]*common.GlobalFileInfo)
 
 	for _, peer := range n.GetPeers() {
@@ -1289,7 +1428,7 @@ func (n *Node) GetPeer(peerID uuid.UUID) (*NodeInfo, bool) {
 func (n *Node) GetNodeInfo() *NodeInfo {
 	return &NodeInfo{
 		ID:            n.ID,
-		IP:            n.IP,
+		IP:            n.AdvertiseIP, // Use advertise IP for peer communication
 		Port:          n.Port,
 		Role:          n.Role,
 		Status:        n.Status,
@@ -1330,7 +1469,6 @@ func (n *Node) SetRole(role NodeRole) {
 
 	if role != common.RoleMaster && oldRole == common.RoleMaster {
 		n.hashRing = nil
-		n.pendingUploads = nil
 		n.globalFileIndex = nil
 		n.logger.Printf("Cleaned up master resources")
 	}
@@ -1501,99 +1639,6 @@ func (n *Node) EnterCriticalSection(resourceID string) bool {
 	return true
 }
 
-func (n *Node) StoreFile(fileID uuid.UUID, filename string, contentType string, data []byte) {
-	nodes := n.hashRing.FindNodesForFile(fileID, 3)
-
-	expectedNodes := make([]uuid.UUID, len(nodes))
-	for i, node := range nodes {
-		expectedNodes[i] = node.ID
-	}
-
-	pendingUpload := &common.PendingUpload{
-		FileID:        fileID,
-		Filename:      filename,
-		ExpectedNodes: expectedNodes,
-		ReceivedAcks:  make(map[uuid.UUID]string),
-	}
-
-	n.pendingUploadsMutex.Lock()
-	n.pendingUploads[fileID] = pendingUpload
-	n.pendingUploadsMutex.Unlock()
-
-	messageFileStorePayload := common.FileStoreRequest{
-		FileID:      fileID,
-		Filename:    filename,
-		ContentType: contentType,
-		Size:        int64(len(data)),
-		Data:        data,
-	}
-
-	payload, err := json.Marshal(messageFileStorePayload)
-	if err != nil {
-		n.logger.Printf("Failed to marshal messageFileStorePayload: %v", err)
-		return
-	}
-
-	msg := common.Message{
-		Type:    common.MessageFileStore,
-		From:    n.ID,
-		Payload: payload,
-	}
-
-	for _, node := range nodes {
-		go n.SendMessage(node.IP, node.Port, msg)
-	}
-}
-
-func (n *Node) RetrieveFile(fileID uuid.UUID, hash string) (*common.FileRetrieveResponse, error) {
-	nodes := n.hashRing.FindNodesForFile(fileID, 1)
-	if len(nodes) == 0 {
-		return nil, fmt.Errorf("no nodes available for file %s", fileID)
-	}
-
-	targetNode := nodes[0]
-	responseChan := make(chan *common.FileRetrieveResponse, 1)
-
-	requestID := uuid.New().String()
-
-	n.pendingRetrievesMutex.Lock()
-	n.pendingRetrieves[requestID] = responseChan
-	n.pendingRetrievesMutex.Unlock()
-
-	defer func() {
-		n.pendingRetrievesMutex.Lock()
-		delete(n.pendingRetrieves, requestID)
-		n.pendingRetrievesMutex.Unlock()
-	}()
-
-	req := common.FileRetrieveRequest{
-		RequestID: requestID,
-		Hash:      hash,
-	}
-	payload, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	msg := common.Message{
-		Type:    common.MessageFileRetrieve,
-		From:    n.ID,
-		To:      targetNode.ID,
-		Payload: payload,
-	}
-	go n.SendMessage(targetNode.IP, targetNode.Port, msg)
-
-	select {
-	case response := <-responseChan:
-		if response.Error != "" {
-			return nil, fmt.Errorf("remote error: %s", response.Error)
-		}
-		return response, nil
-	case <-time.After(30 * time.Second):
-		return nil, fmt.Errorf("timeout waiting for file %s", fileID)
-	}
-}
-
 func (n *Node) DeleteFile(fileID uuid.UUID, hash string) {
 	nodes := n.hashRing.FindNodesForFile(fileID, 3)
 
@@ -1608,91 +1653,6 @@ func (n *Node) DeleteFile(fileID uuid.UUID, hash string) {
 	for _, node := range nodes {
 		go n.SendMessage(node.IP, node.Port, msg)
 	}
-}
-
-func (n *Node) handleAPIFileUpload(msg common.Message, conn net.Conn) {
-	var request common.APIFileUploadRequest
-	if err := json.Unmarshal(msg.Payload, &request); err != nil {
-		n.sendAPIResponse(conn, msg.From, common.MessageAPIFileUpload, common.APIFileUploadResponse{
-			RequestID: request.RequestID,
-			Success:   false,
-			Error:     "invalid request payload",
-		})
-		return
-	}
-
-	n.logger.Printf("API: Received upload request for file %s (%d bytes)", request.Filename, request.Size)
-
-	if n.Role != common.RoleMaster {
-		n.sendAPIResponse(conn, msg.From, common.MessageAPIFileUpload, common.APIFileUploadResponse{
-			RequestID: request.RequestID,
-			Success:   false,
-			Error:     "node is not master",
-		})
-		return
-	}
-
-	if n.hashRing == nil || n.hashRing.GetNodeCount() == 0 {
-		n.sendAPIResponse(conn, msg.From, common.MessageAPIFileUpload, common.APIFileUploadResponse{
-			RequestID: request.RequestID,
-			Success:   false,
-			Error:     "no storage nodes available",
-		})
-		return
-	}
-
-	n.StoreFile(request.FileID, request.Filename, request.ContentType, request.Data)
-
-	response := common.APIFileUploadResponse{
-		RequestID: request.RequestID,
-		Success:   true,
-	}
-
-	n.sendAPIResponse(conn, msg.From, common.MessageAPIFileUpload, response)
-	n.logger.Printf("API: Upload initiated for file %s", request.Filename)
-}
-
-func (n *Node) handleAPIFileDownload(msg common.Message, conn net.Conn) {
-	var request common.APIFileDownloadRequest
-	if err := json.Unmarshal(msg.Payload, &request); err != nil {
-		n.sendAPIResponse(conn, msg.From, common.MessageAPIFileDownload, common.APIFileDownloadResponse{
-			RequestID: request.RequestID,
-			Success:   false,
-			Error:     "invalid request payload",
-		})
-		return
-	}
-
-	n.logger.Printf("API: Received download request for file %s (hash: %s)", request.FileID, request.Hash)
-
-	if n.Role != common.RoleMaster {
-		n.sendAPIResponse(conn, msg.From, common.MessageAPIFileDownload, common.APIFileDownloadResponse{
-			RequestID: request.RequestID,
-			Success:   false,
-			Error:     "node is not master",
-		})
-		return
-	}
-
-	fileResponse, err := n.RetrieveFile(request.FileID, request.Hash)
-	if err != nil {
-		n.sendAPIResponse(conn, msg.From, common.MessageAPIFileDownload, common.APIFileDownloadResponse{
-			RequestID: request.RequestID,
-			Success:   false,
-			Error:     err.Error(),
-		})
-		return
-	}
-
-	response := common.APIFileDownloadResponse{
-		RequestID: request.RequestID,
-		Success:   true,
-		Filename:  fileResponse.Filename,
-		Data:      fileResponse.Data,
-	}
-
-	n.sendAPIResponse(conn, msg.From, common.MessageAPIFileDownload, response)
-	n.logger.Printf("API: Download completed for file %s", request.FileID)
 }
 
 func (n *Node) handleAPIFileDelete(msg common.Message, conn net.Conn) {

@@ -44,9 +44,9 @@ func main() {
 	log.Println("Bully algorithm test")
 	log.Println()
 
-	node1 := node.CreateNodeWithBully("127.0.0.1", 9000, common.RoleMaster, 10)
-	node2 := node.CreateNodeWithBully("127.0.0.1", 9001, common.RoleStorage, 5)
-	node3 := node.CreateNodeWithBully("127.0.0.1", 9002, common.RoleStorage, 1)
+	node1 := node.CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9000, common.RoleMaster, 10)
+	node2 := node.CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9001, common.RoleStorage, 5)
+	node3 := node.CreateNodeWithBully("127.0.0.1", "127.0.0.1", 9002, common.RoleStorage, 1)
 
 	ctx := context.Background()
 

@@ -60,10 +60,13 @@ const (
 	MessageMetadataResponse MessageType = "metadata_response"
 	MessageReplicateFile    MessageType = "replicate_file"
 
-	// API -> Master messages
-	MessageAPIFileUpload   MessageType = "api_file_upload"
-	MessageAPIFileDownload MessageType = "api_file_download"
-	MessageAPIFileDelete   MessageType = "api_file_delete"
+	MessageAPIFileDelete MessageType = "api_file_delete"
+
+	MessageStreamUploadInit    MessageType = "stream_upload_init"
+	MessageStreamUploadReady   MessageType = "stream_upload_ready"
+	MessageStreamDownloadInit  MessageType = "stream_download_init"
+	MessageStreamDownloadReady MessageType = "stream_download_ready"
+	MessageStreamStoreAck      MessageType = "stream_store_ack"
 )
 
 type Message struct {
@@ -183,37 +186,6 @@ type ReplicateFileRequest struct {
 	TargetNodes []uuid.UUID `json:"target_nodes"`
 }
 
-type APIFileUploadRequest struct {
-	RequestID   string    `json:"request_id"`
-	FileID      uuid.UUID `json:"file_id"`
-	Filename    string    `json:"filename"`
-	ContentType string    `json:"content_type"`
-	Size        int64     `json:"size"`
-	Data        []byte    `json:"data"`
-}
-
-type APIFileUploadResponse struct {
-	RequestID string `json:"request_id"`
-	Success   bool   `json:"success"`
-	Hash      string `json:"hash"`
-	Error     string `json:"error,omitempty"`
-}
-
-type APIFileDownloadRequest struct {
-	RequestID string    `json:"request_id"`
-	FileID    uuid.UUID `json:"file_id"`
-	Hash      string    `json:"hash"`
-}
-
-type APIFileDownloadResponse struct {
-	RequestID   string `json:"request_id"`
-	Success     bool   `json:"success"`
-	Filename    string `json:"filename"`
-	ContentType string `json:"content_type"`
-	Data        []byte `json:"data"`
-	Error       string `json:"error,omitempty"`
-}
-
 type APIFileDeleteRequest struct {
 	RequestID string    `json:"request_id"`
 	FileID    uuid.UUID `json:"file_id"`
@@ -224,4 +196,62 @@ type APIFileDeleteResponse struct {
 	RequestID string `json:"request_id"`
 	Success   bool   `json:"success"`
 	Error     string `json:"error,omitempty"`
+}
+
+type StreamUploadInitRequest struct {
+	RequestID   string    `json:"request_id"`
+	FileID      uuid.UUID `json:"file_id"`
+	Filename    string    `json:"filename"`
+	ContentType string    `json:"content_type"`
+	Size        int64     `json:"size"`
+}
+
+type StorageNodeAddr struct {
+	NodeID uuid.UUID `json:"node_id"`
+	Addr   string    `json:"addr"` // ip:port
+}
+
+type StreamUploadReadyResponse struct {
+	RequestID    string            `json:"request_id"`
+	SessionID    string            `json:"session_id"`
+	StorageNodes []StorageNodeAddr `json:"storage_nodes"`
+	Success      bool              `json:"success"`
+	Error        string            `json:"error,omitempty"`
+}
+
+type StreamDownloadInitRequest struct {
+	RequestID string    `json:"request_id"`
+	FileID    uuid.UUID `json:"file_id"`
+	Hash      string    `json:"hash"`
+}
+
+type StreamDownloadReadyResponse struct {
+	RequestID   string `json:"request_id"`
+	StorageAddr string `json:"storage_addr"` // ip:port
+	Filename    string `json:"filename"`
+	Size        int64  `json:"size"`
+	Hash        string `json:"hash"`
+	Success     bool   `json:"success"`
+	Error       string `json:"error,omitempty"`
+}
+
+type StreamStoreAck struct {
+	SessionID string    `json:"session_id"`
+	FileID    uuid.UUID `json:"file_id"`
+	Hash      string    `json:"hash"`
+	NodeID    uuid.UUID `json:"node_id"`
+	Success   bool      `json:"success"`
+	Error     string    `json:"error,omitempty"`
+}
+
+type StreamSession struct {
+	SessionID     string
+	FileID        uuid.UUID
+	Filename      string
+	ContentType   string
+	Size          int64
+	ExpectedNodes []uuid.UUID
+	ReceivedAcks  map[uuid.UUID]string // nodeID -> hash
+	CreatedAt     time.Time
+	Done          chan struct{}
 }

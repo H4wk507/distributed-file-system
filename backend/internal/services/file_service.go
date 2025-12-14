@@ -39,3 +39,37 @@ func (s *FileService) DeleteFileByID(fileID uuid.UUID) error {
 	_, err := s.db.Exec(query, fileID)
 	return err
 }
+
+func (s *FileService) ListFilesPaginated(ownerID uuid.UUID, page, perPage int) ([]models.File, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 10
+	}
+	if perPage > 100 {
+		perPage = 100
+	}
+
+	offset := (page - 1) * perPage
+
+	var total int
+	countQuery := `SELECT COUNT(*) FROM files WHERE owner_id = $1`
+	if err := s.db.Get(&total, countQuery, ownerID); err != nil {
+		return nil, 0, fmt.Errorf("failed to count files: %w", err)
+	}
+
+	var files []models.File
+	query := `
+		SELECT id, name, size, hash, content_type, owner_id, created_at, updated_at 
+		FROM files 
+		WHERE owner_id = $1 
+		ORDER BY created_at DESC 
+		LIMIT $2 OFFSET $3
+	`
+	if err := s.db.Select(&files, query, ownerID, perPage, offset); err != nil {
+		return nil, 0, fmt.Errorf("failed to list files: %w", err)
+	}
+
+	return files, total, nil
+}

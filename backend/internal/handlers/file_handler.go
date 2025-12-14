@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"crypto/sha256"
 	"dfs-backend/dfs/client"
 	"dfs-backend/internal/database"
 	"dfs-backend/internal/dto"
@@ -9,10 +8,9 @@ import (
 	"dfs-backend/internal/models"
 	"dfs-backend/internal/services"
 	"dfs-backend/utils/response"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/google/uuid"
 )
@@ -29,6 +27,66 @@ func NewFileHandler(db *database.DB, c *client.MasterClient) *FileHandler {
 	}
 }
 
+func (h *FileHandler) ListFiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	claims := middleware.GetUserFromContext(r.Context())
+	if claims == nil {
+		response.Error(w, http.StatusUnauthorized, "Not authenticated")
+		return
+	}
+
+	page := 1
+	perPage := 10
+
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	if perPageStr := r.URL.Query().Get("per_page"); perPageStr != "" {
+		if pp, err := strconv.Atoi(perPageStr); err == nil && pp > 0 {
+			perPage = pp
+		}
+	}
+
+	files, total, err := h.service.ListFilesPaginated(claims.UserID, page, perPage)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to list files: %v", err))
+		return
+	}
+
+	fileItems := make([]dto.FileItem, len(files))
+	for i, f := range files {
+		fileItems[i] = dto.FileItem{
+			ID:          f.ID,
+			Filename:    f.Name,
+			Size:        f.Size,
+			ContentType: f.ContentType,
+			Hash:        f.Hash,
+			OwnerID:     f.OwnerID,
+			CreatedAt:   f.CreatedAt,
+			UpdatedAt:   f.UpdatedAt,
+		}
+	}
+
+	resp := dto.FileListResponse{
+		Files:   fileItems,
+		Total:   total,
+		Page:    page,
+		PerPage: perPage,
+	}
+
+	response.JSON(w, http.StatusOK, response.SuccessResponse{
+		Success: true,
+		Data:    resp,
+	})
+}
+
 func (h *FileHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		response.Error(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -40,9 +98,6 @@ func (h *FileHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
-
-	// TODO: support larger files, chunked upload protocol
-	r.Body = http.MaxBytesReader(w, r.Body, 100*1024*1024) // 100MB limit
 
 	if err := r.ParseMultipartForm(32 * 1024 * 1024); err != nil {
 		response.Error(w, http.StatusBadRequest, fmt.Sprintf("Failed to parse multipart form: %v", err))
@@ -56,27 +111,23 @@ func (h *FileHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// TODO: what about big files?
-	data, err := io.ReadAll(file)
-	if err != nil {
-		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to read file: %v", err))
-		return
-	}
-
 	fileID := uuid.New()
 	contentType := header.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
 
-	contentHash := sha256.Sum256(data)
-	contentHashStr := hex.EncodeToString(contentHash[:])
+	hash, err := h.client.UploadFileStream(fileID, header.Filename, contentType, header.Size, file)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to upload file to storage: %v", err))
+		return
+	}
 
 	fileModel := &models.File{
 		ID:          fileID,
 		Name:        header.Filename,
 		Size:        header.Size,
-		Hash:        contentHashStr,
+		Hash:        hash,
 		ContentType: contentType,
 		OwnerID:     claims.UserID,
 	}
@@ -86,20 +137,6 @@ func (h *FileHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uploadResp, err := h.client.UploadFile(fileID, header.Filename, contentType, data)
-	if err != nil {
-		h.service.DeleteFileByID(fileID)
-		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to upload file to storage: %v", err))
-		return
-	}
-
-	if !uploadResp.Success {
-		h.service.DeleteFileByID(fileID)
-		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Storage error: %s", uploadResp.Error))
-		return
-	}
-
-	// TODO: streaming response?
 	resp := dto.FileUploadResponse{
 		ID:       fileID,
 		Filename: header.Filename,
@@ -109,7 +146,7 @@ func (h *FileHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusAccepted, response.SuccessResponse{
 		Success: true,
 		Data:    resp,
-		Message: "File upload initiated",
+		Message: "File uploaded successfully",
 	})
 }
 
@@ -148,23 +185,14 @@ func (h *FileHandler) GetFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	downloadResp, err := h.client.DownloadFile(file.ID, file.Hash)
-	if err != nil {
-		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to retrieve file: %v", err))
-		return
-	}
-
-	if !downloadResp.Success {
-		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Storage error: %s", downloadResp.Error))
-		return
-	}
-
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", file.Name))
 	w.Header().Set("Content-Type", file.ContentType)
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(downloadResp.Data)))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", file.Size))
 
-	w.WriteHeader(http.StatusOK)
-	w.Write(downloadResp.Data)
+	if err := h.client.DownloadFileStream(file.ID, file.Hash, w); err != nil {
+		fmt.Printf("Error streaming file %s: %v\n", file.ID, err)
+		return
+	}
 }
 
 func (h *FileHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
