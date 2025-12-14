@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 )
 
 // UploadCompleteCallback is called when an upload is successfully completed
@@ -147,8 +148,18 @@ func (s *StreamServer) handleUpload(conn net.Conn, firstByte byte) {
 		uint64(fullBuf[41])<<24 | uint64(fullBuf[42])<<16 | uint64(fullBuf[43])<<8 | uint64(fullBuf[44]))
 	header.ChunkSize = int32(uint32(fullBuf[45])<<24 | uint32(fullBuf[46])<<16 | uint32(fullBuf[47])<<8 | uint32(fullBuf[48]))
 
-	// Validate session
-	session, exists := s.sessions.GetSession(header.SessionID)
+	// Validate session with retry (session might be propagating from master)
+	var session *UploadSession
+	var exists bool
+	for retry := 0; retry < 10; retry++ {
+		session, exists = s.sessions.GetSession(header.SessionID)
+		if exists {
+			break
+		}
+		if retry < 9 {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
 	if !exists {
 		s.logger.Printf("Invalid or expired session: %s", header.SessionID)
 		s.sendUploadResponse(conn, false, "", "invalid or expired session")
