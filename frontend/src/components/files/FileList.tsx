@@ -161,7 +161,7 @@ export function FileList({
         header: "Repliki",
         cell: ({ row }) => (
           <span className="text-muted-foreground">
-            {row.original.replicas?.length || 0}
+            {row.original.replicas_count}
           </span>
         ),
         enableSorting: false,

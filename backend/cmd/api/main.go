@@ -50,7 +50,9 @@ func main() {
 	router.Handle("GET /api/auth/me", authMiddleware.RequireAuth(http.HandlerFunc(authHandler.GetMe)))
 
 	router.Handle("GET /api/files", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.ListFiles)))
-	router.Handle("POST /api/files/upload/", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.UploadFile)))
+	router.Handle("POST /api/files/upload/init", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.InitChunkedUpload)))
+	router.Handle("POST /api/files/upload/chunk", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.UploadChunk)))
+	router.Handle("POST /api/files/upload/finalize", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.FinalizeChunkedUpload)))
 	router.Handle("GET /api/files/{fileID}/", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.GetFile)))
 	router.Handle("GET /api/files/{fileID}/metadata", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.GetFileMetadata)))
 	router.Handle("GET /api/nodes", authMiddleware.RequireAuth(http.HandlerFunc(fileHandler.GetNodes)))

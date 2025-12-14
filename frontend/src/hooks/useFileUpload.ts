@@ -1,8 +1,15 @@
-import type { ApiResponse, UploadResponse } from "@/api/types";
+import type {
+  ApiResponse,
+  ChunkedUploadChunkResponse,
+  ChunkedUploadInitResponse,
+  UploadResponse,
+} from "@/api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import type { CanceledError } from "axios";
 import { useCallback, useRef, useState } from "react";
 import { useAxios } from "./useAxios";
+
+const CHUNK_SIZE = 50 * 1024 * 1024;
 
 export interface UploadItem {
   id: string;
@@ -47,6 +54,8 @@ export function useFileUpload(): UseFileUploadReturn {
       const controller = new AbortController();
       abortControllers.current.set(uploadId, controller);
 
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
       setUploads((prev) => [
         ...prev,
         {
@@ -55,36 +64,73 @@ export function useFileUpload(): UseFileUploadReturn {
           fileSize: file.size,
           progress: 0,
           status: "pending",
+          uploadedChunks: 0,
+          totalChunks,
         },
       ]);
 
       try {
-        const formData = new FormData();
-        formData.append("file", file);
-
-        const response = await axios.post<ApiResponse<UploadResponse>>(
-          "/files/upload/",
-          formData,
+        // Step 1: Initialize chunked upload session
+        const initResponse = await axios.post<
+          ApiResponse<ChunkedUploadInitResponse>
+        >(
+          "/files/upload/init",
           {
-            headers: {
-              "Content-Type": "multipart/form-data",
-            },
-            signal: controller.signal,
-            onUploadProgress: (progressEvent) => {
-              if (progressEvent.total) {
-                const progress = Math.round(
-                  (progressEvent.loaded / progressEvent.total) * 100,
-                );
-                updateUpload(uploadId, { progress, status: "uploading" });
-              }
-            },
+            fileName: file.name,
+            fileSize: file.size,
+            totalChunks,
+            contentType: file.type || "application/octet-stream",
           },
+          { signal: controller.signal },
+        );
+
+        const sessionId = initResponse.data.data?.sessionId;
+        if (!sessionId) {
+          throw new Error("Failed to initialize upload session");
+        }
+
+        updateUpload(uploadId, { status: "uploading" });
+
+        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+          if (controller.signal.aborted) {
+            throw new Error("Upload cancelled");
+          }
+
+          const start = chunkIndex * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, file.size);
+          const chunk = file.slice(start, end);
+
+          const formData = new FormData();
+          formData.append("chunk", chunk);
+          formData.append("chunkIndex", String(chunkIndex));
+          formData.append("sessionId", sessionId);
+
+          await axios.post<ApiResponse<ChunkedUploadChunkResponse>>(
+            "/files/upload/chunk",
+            formData,
+            {
+              headers: { "Content-Type": "multipart/form-data" },
+              signal: controller.signal,
+            },
+          );
+
+          const progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);
+          updateUpload(uploadId, {
+            progress,
+            uploadedChunks: chunkIndex + 1,
+          });
+        }
+
+        const finalizeResponse = await axios.post<ApiResponse<UploadResponse>>(
+          "/files/upload/finalize",
+          { sessionId },
+          { signal: controller.signal },
         );
 
         updateUpload(uploadId, {
           progress: 100,
           status: "completed",
-          response: response.data.data,
+          response: finalizeResponse.data.data,
         });
 
         queryClient.invalidateQueries({ queryKey: ["files"] });
@@ -93,7 +139,8 @@ export function useFileUpload(): UseFileUploadReturn {
         const isCancelled =
           err instanceof Error &&
           (err.name === "CanceledError" ||
-            (err as CanceledError<unknown>).code === "ERR_CANCELED");
+            (err as CanceledError<unknown>).code === "ERR_CANCELED" ||
+            err.message === "Upload cancelled");
 
         if (isCancelled) {
           updateUpload(uploadId, { status: "cancelled" });

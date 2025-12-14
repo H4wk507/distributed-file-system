@@ -141,7 +141,7 @@ func (c *MasterClient) GetStorageNodes() ([]*common.NodeInfo, error) {
 
 	var peers []*common.NodeInfo
 	if err := json.Unmarshal(response.Payload, &peers); err != nil {
-		return nil, fmt.Errorf("failed to parse peers: %w")
+		return nil, fmt.Errorf("failed to parse peers: %w", err)
 	}
 
 	var storage []*common.NodeInfo
@@ -187,7 +187,24 @@ func (c *MasterClient) DeleteFile(fileID uuid.UUID, hash string) (*common.APIFil
 	return &deleteResponse, nil
 }
 
-func (c *MasterClient) UploadFileStream(fileID uuid.UUID, filename, contentType string, size int64, reader io.Reader) (string, error) {
+// StreamUploadSession holds open connections for chunked streaming
+type StreamUploadSession struct {
+	SessionID    string
+	FileID       uuid.UUID
+	Size         int64
+	Connections  []net.Conn
+	NodeIDs      []uuid.UUID
+	mu           sync.Mutex
+	bytesWritten int64
+}
+
+type UploadResult struct {
+	Hash    string
+	NodeIDs []uuid.UUID
+}
+
+// InitStreamUpload initializes a streaming upload session and opens connections
+func (c *MasterClient) InitStreamUpload(fileID uuid.UUID, filename, contentType string, size int64) (*StreamUploadSession, error) {
 	request := common.StreamUploadInitRequest{
 		RequestID:   uuid.New().String(),
 		FileID:      fileID,
@@ -198,7 +215,7 @@ func (c *MasterClient) UploadFileStream(fileID uuid.UUID, filename, contentType 
 
 	payload, err := json.Marshal(request)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal stream upload request: %w", err)
+		return nil, fmt.Errorf("failed to marshal stream upload request: %w", err)
 	}
 
 	msg := common.Message{
@@ -209,114 +226,171 @@ func (c *MasterClient) UploadFileStream(fileID uuid.UUID, filename, contentType 
 
 	response, err := c.sendRequest(msg)
 	if err != nil {
-		return "", fmt.Errorf("failed to send stream upload init: %w", err)
+		return nil, fmt.Errorf("failed to send stream upload init: %w", err)
 	}
 
 	var uploadReady common.StreamUploadReadyResponse
 	if err := json.Unmarshal(response.Payload, &uploadReady); err != nil {
-		return "", fmt.Errorf("failed to unmarshal upload ready response: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal upload ready response: %w", err)
 	}
 
 	if !uploadReady.Success {
-		return "", fmt.Errorf("upload init failed: %s", uploadReady.Error)
+		return nil, fmt.Errorf("upload init failed: %s", uploadReady.Error)
 	}
 
 	if len(uploadReady.StorageNodes) == 0 {
-		return "", fmt.Errorf("no storage nodes available")
+		return nil, fmt.Errorf("no storage nodes available")
 	}
 
-	// Step 2: Stream data to all storage nodes in parallel
-	// We need to read the data once and send to multiple nodes
-	// For simplicity, we'll read into a buffer and send to each node
-	// TODO: For very large files, use TeeReader or temporary file
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return "", fmt.Errorf("failed to read data: %w", err)
-	}
-
-	var wg sync.WaitGroup
-	errors := make(chan error, len(uploadReady.StorageNodes))
-	hashes := make(chan string, len(uploadReady.StorageNodes))
-
+	// Open connections to all storage nodes
+	var connections []net.Conn
+	var nodeIDs []uuid.UUID
 	for _, node := range uploadReady.StorageNodes {
-		wg.Add(1)
-		go func(addr string) {
-			defer wg.Done()
-			hash, err := c.streamToStorage(addr, uploadReady.SessionID, size, data)
-			if err != nil {
-				errors <- fmt.Errorf("stream to %s failed: %w", addr, err)
-				return
+		conn, err := net.DialTimeout("tcp", node.Addr, c.timeout)
+		if err != nil {
+			// Close already opened connections
+			for _, c := range connections {
+				c.Close()
 			}
-			hashes <- hash
-		}(node.Addr)
+			return nil, fmt.Errorf("failed to connect to storage %s: %w", node.Addr, err)
+		}
+
+		// Set long deadline for large files
+		deadline := 30*time.Minute + time.Duration(size/(1024*1024*1024))*time.Minute
+		conn.SetDeadline(time.Now().Add(deadline))
+
+		// Send header
+		header := &streaming.StreamHeader{
+			Magic:     streaming.MagicUpload,
+			SessionID: uploadReady.SessionID,
+			FileSize:  size,
+			ChunkSize: streaming.DefaultChunkSize,
+		}
+
+		if err := header.Encode(conn); err != nil {
+			conn.Close()
+			for _, c := range connections {
+				c.Close()
+			}
+			return nil, fmt.Errorf("failed to send header to %s: %w", node.Addr, err)
+		}
+
+		connections = append(connections, conn)
+		nodeIDs = append(nodeIDs, node.NodeID)
 	}
 
-	wg.Wait()
-	close(errors)
-	close(hashes)
+	return &StreamUploadSession{
+		SessionID:   uploadReady.SessionID,
+		FileID:      fileID,
+		Size:        size,
+		Connections: connections,
+		NodeIDs:     nodeIDs,
+	}, nil
+}
 
-	var firstError error
-	for err := range errors {
-		if firstError == nil {
-			firstError = err
+// WriteChunk writes data to all storage node connections
+func (s *StreamUploadSession) WriteChunk(data []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i, conn := range s.Connections {
+		n, err := conn.Write(data)
+		if err != nil {
+			return fmt.Errorf("failed to write to connection %d: %w", i, err)
+		}
+		if n != len(data) {
+			return fmt.Errorf("incomplete write to connection %d: %d/%d", i, n, len(data))
 		}
 	}
 
-	if firstError != nil {
-		return "", firstError
+	s.bytesWritten += int64(len(data))
+	return nil
+}
+
+// Finalize waits for responses from all storage nodes and returns the result
+func (s *StreamUploadSession) Finalize() (*UploadResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.bytesWritten != s.Size {
+		return nil, fmt.Errorf("incomplete upload: wrote %d/%d bytes", s.bytesWritten, s.Size)
 	}
 
 	var hash string
-	for h := range hashes {
-		hash = h
-		break
+	var firstError error
+	var successfulNodes []uuid.UUID
+
+	for i, conn := range s.Connections {
+		// Read response (321 bytes: 1 status + 64 hash + 256 error)
+		resp := make([]byte, 321)
+		if _, err := io.ReadFull(conn, resp); err != nil {
+			if firstError == nil {
+				firstError = fmt.Errorf("failed to read response from connection %d: %w", i, err)
+			}
+			continue
+		}
+
+		if resp[0] != 1 {
+			errMsg := string(trimNull(resp[65:321]))
+			if firstError == nil {
+				firstError = fmt.Errorf("storage error from connection %d: %s", i, errMsg)
+			}
+			continue
+		}
+
+		if hash == "" {
+			hash = string(trimNull(resp[1:65]))
+		}
+		successfulNodes = append(successfulNodes, s.NodeIDs[i])
 	}
 
-	return hash, nil
+	if firstError != nil {
+		return nil, firstError
+	}
+
+	return &UploadResult{
+		Hash:    hash,
+		NodeIDs: successfulNodes,
+	}, nil
 }
 
-func (c *MasterClient) streamToStorage(addr, sessionID string, size int64, data []byte) (string, error) {
-	conn, err := net.DialTimeout("tcp", addr, c.timeout)
+// Close closes all connections
+func (s *StreamUploadSession) Close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, conn := range s.Connections {
+		conn.Close()
+	}
+	s.Connections = nil
+}
+
+// UploadFileStream uploads a file using streaming (legacy single-call method)
+func (c *MasterClient) UploadFileStream(fileID uuid.UUID, filename, contentType string, size int64, reader io.Reader) (*UploadResult, error) {
+	session, err := c.InitStreamUpload(fileID, filename, contentType, size)
 	if err != nil {
-		return "", fmt.Errorf("failed to connect to storage: %w", err)
+		return nil, err
 	}
-	defer conn.Close()
+	defer session.Close()
 
-	conn.SetDeadline(time.Now().Add(10 * time.Minute))
-
-	header := &streaming.StreamHeader{
-		Magic:     streaming.MagicUpload,
-		SessionID: sessionID,
-		FileSize:  size,
-		ChunkSize: streaming.DefaultChunkSize,
-	}
-
-	if err := header.Encode(conn); err != nil {
-		return "", fmt.Errorf("failed to send header: %w", err)
-	}
-
-	written, err := conn.Write(data)
-	if err != nil {
-		return "", fmt.Errorf("failed to write data: %w", err)
-	}
-
-	if int64(written) != size {
-		return "", fmt.Errorf("incomplete write: %d/%d bytes", written, size)
+	// Stream data in chunks
+	buf := make([]byte, 4*1024*1024) // 4MB buffer
+	for {
+		n, err := reader.Read(buf)
+		if n > 0 {
+			if writeErr := session.WriteChunk(buf[:n]); writeErr != nil {
+				return nil, writeErr
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read data: %w", err)
+		}
 	}
 
-	// Read response (321 bytes: 1 status + 64 hash + 256 error)
-	resp := make([]byte, 321)
-	if _, err := io.ReadFull(conn, resp); err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp[0] != 1 {
-		errMsg := string(trimNull(resp[65:321]))
-		return "", fmt.Errorf("storage error: %s", errMsg)
-	}
-
-	hash := string(trimNull(resp[1:65]))
-	return hash, nil
+	return session.Finalize()
 }
 
 func (c *MasterClient) DownloadFileStream(fileID uuid.UUID, hash string, writer io.Writer) error {

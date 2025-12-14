@@ -21,6 +21,7 @@ export interface FileInfo {
   replicas?: string[];
   created_at: string;
   updated_at: string;
+  replicas_count: number;
 }
 
 export interface FileListResponse {
@@ -31,10 +32,19 @@ export interface FileListResponse {
 }
 
 export interface UploadResponse {
-  file_id: string;
+  id: string;
   filename: string;
   size: number;
-  replicas: number;
+}
+
+export interface ChunkedUploadInitResponse {
+  sessionId: string;
+}
+
+export interface ChunkedUploadChunkResponse {
+  chunkIndex: number;
+  receivedChunks: number;
+  totalChunks: number;
 }
 
 export interface NodeInfo {

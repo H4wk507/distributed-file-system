@@ -40,6 +40,20 @@ func (s *FileService) DeleteFileByID(fileID uuid.UUID) error {
 	return err
 }
 
+func (s *FileService) CreateReplicas(fileID uuid.UUID, nodeIDs []uuid.UUID) error {
+	if len(nodeIDs) == 0 {
+		return nil
+	}
+
+	query := `INSERT INTO replicas (file_id, node_id, status) VALUES ($1, $2, 'synced')`
+	for _, nodeID := range nodeIDs {
+		if _, err := s.db.Exec(query, fileID, nodeID); err != nil {
+			return fmt.Errorf("failed to create replica for node %s: %w", nodeID, err)
+		}
+	}
+	return nil
+}
+
 func (s *FileService) ListFilesPaginated(ownerID uuid.UUID, page, perPage int) ([]models.File, int, error) {
 	if page < 1 {
 		page = 1
@@ -61,10 +75,12 @@ func (s *FileService) ListFilesPaginated(ownerID uuid.UUID, page, perPage int) (
 
 	var files []models.File
 	query := `
-		SELECT id, name, size, hash, content_type, owner_id, created_at, updated_at 
-		FROM files 
-		WHERE owner_id = $1 
-		ORDER BY created_at DESC 
+		SELECT f.id, f.name, f.size, f.hash, f.content_type, f.owner_id, f.created_at, f.updated_at, count(r.id) as replicas_count
+		FROM files f
+		left join replicas r on f.id = r.file_id and r.status = 'synced'
+		WHERE f.owner_id = $1 
+		GROUP BY f.id, f.name, f.size, f.hash, f.content_type, f.owner_id, f.created_at, f.updated_at
+		ORDER BY f.created_at DESC 
 		LIMIT $2 OFFSET $3
 	`
 	if err := s.db.Select(&files, query, ownerID, perPage, offset); err != nil {

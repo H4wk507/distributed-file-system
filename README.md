@@ -133,7 +133,8 @@ go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@lat
 - Bully Algorithm - jak wybieramy nowego mastera przy awarii
 - Deadlock Detection - jak wykrywamy zakleszczenia (wait-for graph + DFS)
 - Distributed Locking - jak zarządzamy blokadami w systemie rozproszonym
-- Streaming - jak przesyłamy pliki między węzłami
+- Streaming, Protokół - jak przesyłamy pliki między węzłami
+- Chunked upload - jak przesyłamy pliki w partiach
 
 4. Instrukcja uruchomienia
 

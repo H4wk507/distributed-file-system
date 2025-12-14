@@ -1,14 +1,8 @@
-import type {
-  ApiResponse,
-  FileInfo,
-  FileListResponse,
-  UploadResponse,
-} from "@/api/types";
+import type { ApiResponse, FileInfo, FileListResponse } from "@/api/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAxios } from "./useAxios";
 
-// implement those endpoints
 export function useFiles(page: number, perPage: number) {
   const axios = useAxios();
 
@@ -39,36 +33,6 @@ export function useFile(fileId: string) {
       return data.data;
     },
     enabled: !!fileId,
-  });
-}
-
-export function useUploadFile() {
-  const axios = useAxios();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const { data } = await axios.post<ApiResponse<UploadResponse>>(
-        "/files/upload",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        },
-      );
-      return data.data;
-    },
-    onSuccess: (data) => {
-      toast.success("Plik przesłany", {
-        description: `${data?.filename} został przesłany pomyślnie`,
-      });
-      queryClient.invalidateQueries({ queryKey: ["files"] });
-      queryClient.invalidateQueries({ queryKey: ["metrics"] });
-    },
   });
 }
 

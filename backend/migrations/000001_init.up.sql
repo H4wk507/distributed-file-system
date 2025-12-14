@@ -35,13 +35,15 @@ CREATE TABLE IF NOT EXISTS replicas (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     file_id UUID NOT NULL,
-    node_id UUID NOT NULL, -- TODO
+    node_id UUID NOT NULL,
     status replica_status NOT NULL DEFAULT 'syncing',
 
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE ON UPDATE CASCADE -- TODO
+    FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE ON UPDATE CASCADE
+
+    UNIQUE (file_id, node_id)
 );
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
