@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"dfs-backend/dfs/client"
+	"dfs-backend/dfs/common"
 	"dfs-backend/internal/database"
 	"dfs-backend/internal/dto"
 	"dfs-backend/internal/middleware"
@@ -199,6 +200,73 @@ func (h *FileHandler) GetFileMetadata(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, response.SuccessResponse{
 		Success: true,
 		Data:    metadata,
+	})
+}
+
+func (h *FileHandler) GetNodes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	claims := middleware.GetUserFromContext(r.Context())
+	if claims == nil {
+		response.Error(w, http.StatusUnauthorized, "Not authenticated")
+		return
+	}
+
+	nodes, err := h.client.GetStorageNodes()
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get storage nodes: %v", err))
+		return
+	}
+
+	response.JSON(w, http.StatusOK, response.SuccessResponse{
+		Success: true,
+		Data:    nodes,
+	})
+}
+
+func (h *FileHandler) GetNode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	claims := middleware.GetUserFromContext(r.Context())
+	if claims == nil {
+		response.Error(w, http.StatusUnauthorized, "Not authenticated")
+		return
+	}
+
+	nodes, err := h.client.GetStorageNodes()
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get storage nodes: %v", err))
+		return
+	}
+
+	nodeId := r.PathValue("nodeID")
+	if nodeId == "" {
+		response.Error(w, http.StatusBadRequest, "'nodeID' not present in path")
+		return
+	}
+
+	var foundNode *common.NodeInfo
+	for _, node := range nodes {
+		if node.ID.String() == nodeId {
+			foundNode = node
+			break
+		}
+	}
+
+	if foundNode == nil {
+		response.Error(w, http.StatusNotFound, "Node not found")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, response.SuccessResponse{
+		Success: true,
+		Data:    foundNode,
 	})
 }
 

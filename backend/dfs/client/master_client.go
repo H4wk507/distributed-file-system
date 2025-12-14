@@ -127,6 +127,33 @@ func (c *MasterClient) discoverMaster() error {
 	return fmt.Errorf("no master found in cluster")
 }
 
+// Ask the current master for the peer list and filter storage nodes
+func (c *MasterClient) GetStorageNodes() ([]*common.NodeInfo, error) {
+	msg := common.Message{
+		Type: common.MessageDiscovery,
+		From: c.clientID,
+	}
+
+	response, err := c.sendRequest(msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send discovery request: %w", err)
+	}
+
+	var peers []*common.NodeInfo
+	if err := json.Unmarshal(response.Payload, &peers); err != nil {
+		return nil, fmt.Errorf("failed to parse peers: %w")
+	}
+
+	var storage []*common.NodeInfo
+	for _, p := range peers {
+		if p.Role == common.RoleStorage && p.Status == common.StatusOnline {
+			storage = append(storage, p)
+		}
+	}
+
+	return storage, nil
+}
+
 func (c *MasterClient) DeleteFile(fileID uuid.UUID, hash string) (*common.APIFileDeleteResponse, error) {
 	requestID := uuid.New().String()
 
