@@ -10,62 +10,53 @@
 \usepackage{color}
 \usepackage{listings}
 
-\lstloadlanguages{% Check Dokumentation for further languages ...
-	C,
-	C++,
-	csh,
-	Java
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+
+\lstloadlanguages{
+  Go,        % Dodanie Go
 }
+
+\setcounter{section}{0}
 
 \definecolor{red}{rgb}{0.6,0,0} % for strings
 \definecolor{blue}{rgb}{0,0,0.6}
 \definecolor{green}{rgb}{0,0.8,0}
 \definecolor{cyan}{rgb}{0.0,0.6,0.6}
-
 \lstset{
-	language=csh,
-	basicstyle=\footnotesize\ttfamily,
-	numbers=left,
-	numberstyle=\tiny,
-	numbersep=5pt,
-	tabsize=2,
-	extendedchars=true,
-	breaklines=true,
-	frame=b,
-	stringstyle=\color{blue}\ttfamily,
-	showspaces=false,
-	showtabs=false,
-	xleftmargin=17pt,
-	framexleftmargin=17pt,
-	framexrightmargin=5pt,
-	framexbottommargin=4pt,
-	commentstyle=\color{green},
-	morecomment=[l]{//}, %use comment-line-style!
-	morecomment=[s]{/*}{*/}, %for multiline comments
-	showstringspaces=false,
-	morekeywords={ abstract, event, new, struct,
-		as, explicit, null, switch,
-		base, extern, object, this,
-		bool, false, operator, throw,
-		break, finally, out, true,
-		byte, fixed, override, try,
-		case, float, params, typeof,
-		catch, for, private, uint,
-		char, foreach, protected, ulong,
-		checked, goto, public, unchecked,
-		class, if, readonly, unsafe,
-		const, implicit, ref, ushort,
-		continue, in, return, using,
-		decimal, int, sbyte, virtual,
-		default, interface, sealed, volatile,
-		delegate, internal, short, void,
-		do, is, sizeof, while,
-		double, lock, stackalloc,
-		else, long, static,
-		enum, namespace, string},
-	keywordstyle=\color{cyan},
-	identifierstyle=\color{red},
+    language=Go,
+    basicstyle=\footnotesize\ttfamily,
+    numbers=left,
+    numberstyle=\tiny,
+    numbersep=5pt,
+    tabsize=2,
+    extendedchars=true,
+    breaklines=true,
+    frame=b,
+    stringstyle=\color{blue}\ttfamily,
+    showspaces=false,
+    showtabs=false,
+    xleftmargin=17pt,
+    framexleftmargin=17pt,
+    framexrightmargin=5pt,
+    framexbottommargin=4pt,
+    commentstyle=\color{green},
+    morecomment=[l]{//},  % dla komentarzy liniowych
+    morecomment=[s]{/*}{*/},  % dla komentarzy wieloliniowych
+    showstringspaces=false,
+    morekeywords={
+        package, import, func, var, const, type, go, defer, return,
+        if, else, switch, case, fallthrough, for, range, break, continue,
+        select, chan, interface, struct, map, gofmt, len, cap, append, copy,
+        error, defer, panic, recover
+    },
+    keywordstyle=\color{cyan},  % kolory dla słów kluczowych
+    identifierstyle=\color{red},  % kolory dla identyfikatorów
+    commentstyle=\color{green},  % kolory dla komentarzy
+    emph={main},  % Możesz też wyświetlić główną funkcję na inny sposób
+    emphstyle=\bfseries\color{magenta}  % dla wyróżnionej funkcji "main"
 }
+
 \usepackage{caption}
 \DeclareCaptionFont{white}{\color{white}}
 \DeclareCaptionFormat{listing}{\colorbox{blue}{\parbox{\textwidth}{\hspace{15pt}#1#2#3}}}
@@ -82,56 +73,424 @@
 
 \begin{document}
 	
-	\title{Nazwa Przedmiotu\\\small{dokumentacja projektu XYZ}}
-	\author{Imię Nazwisko, grupa XYZ}
+	\title{Modelowanie i analiza systemów informatycznych\\\small{dokumentacja projektu RSP - Rozproszony system plików}}
+	\author{Piotr Skowroński, Krzysztof Czuba, grupa XYZ}
 	\date{\today}
 
 	\maketitle
 	\newpage
-	\section*{Część I}
-	\subsection*{Opis programu}
-	Treść zadania.
-	\subsection*{Instrukcja obsługi}
-	Jak uruchomić program, jak wyglądają dane. Mile widziana wizualizacja gry, wyników z punku widzenia aplikacji itd. 
-	\subsection{Instrukcja wdrożenia}
+    \section{Część 1.}
+\subsection{Opis programu}
+Implementacja rozproszonego systemu plików, z uwzględnieniem problemu zakleszczeń i algorytmu elekcji.
+
+System składa się z części serwerowej w której działa jeden węzeł główny (\texttt{master}) oraz wiele węzłów jedynie przechowujących dane (\texttt{storage}), oraz z web UI umożliwiającego download/upload plików.
+
+\subsection{Wymagania wstępne i środowisko}
+
+\subsubsection{Wymagania systemowe i narzędzia}
+Do uruchomienia i wdrożenia systemu wymagane są następujące narzędzia:
+\begin{itemize}
+    \item \textbf{System Operacyjny:} \textbf{Linux} (testowane lokalnie; inne systemy wymagają analogicznych narzędzi).
+    \item \textbf{Repozytorium:} \textbf{Git} (pobranie projektu).
+    \item \textbf{Backend i węzły DFS:} \textbf{Go} (\texttt{1.25+}).
+    \item \textbf{Baza Danych:} \textbf{PostgreSQL} (\texttt{5432/TCP}) -- baza danych dla API.
+    \item \textbf{Frontend:} \textbf{Node.js} (LTS, np. \texttt{20.x}) i \textbf{pnpm}.
+\end{itemize}
+
+\subsubsection{Wymagania sieciowe}
+Aby klaster działał poprawnie, należy zapewnić komunikację TCP:
+\begin{itemize}
+    \item Master powinien być osiągalny dla węzłów Storage na porcie \texttt{9000/TCP} (lub innym skonfigurowanym).
+    \item Na maszynie zewnętrznej, na której działa węzeł Storage, port tego węzła (np. \texttt{9004/TCP}) musi zostać odblokowany w firewallu.
+    \item Z Mastera powinno być możliwe zestawienie połączenia do \texttt{advertise-ip:port} węzła Storage.
+\end{itemize}
+
+
+\subsection{Instalacja i Wdrożenie (Przygotowanie)}
+Sekcja ta opisuje kroki niezbędne do przygotowania środowiska i binarek systemu. Kroki te są wykonywane zazwyczaj tylko raz.
+
+\begin{enumerate}
+    \item Projekt powinien zostać pobrany:
+\begin{verbatim}
+git clone https://github.com/H4wk507/distributed-file-system
+cd distributed-filesystem
+\end{verbatim}
+
+    \item Zależności frontendu powinny zostać zainstalowane:
+\begin{verbatim}
+cd frontend
+pnpm install
+\end{verbatim}
+    
+    \item PostgreSQL powinien zostać uruchomiony lokalnie na \texttt{localhost:5432} (parametry powinny być zgodne z \texttt{.env} / \texttt{backend/.env}).
+
+    \item Migracje bazy danych powinny zostać wykonane (wymagane jest narzędzie \texttt{migrate}):
+\begin{verbatim}
+go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+make migrate-up
+\end{verbatim}
+\end{enumerate}
+
+\subsection{Instrukcja Uruchomienia i Obsługi}
+
+\subsubsection{Uruchomienie lokalne (Środowisko deweloperskie)}
+Po wykonaniu kroków instalacji, system w trybie deweloperskim można uruchomić za pomocą trzech terminali:
+\begin{enumerate}
+    \item \textbf{Uruchomienie Klastra DFS} (master + 3 storage):
+\begin{verbatim}
+cd backend
+./scripts/start-cluster.sh
+\end{verbatim}
+    \item \textbf{Uruchomienie API}:
+\begin{verbatim}
+cd backend
+go run ./cmd/api
+\end{verbatim}
+    \item \textbf{Uruchomienie Frontendu}:
+\begin{verbatim}
+cd frontend
+pnpm dev
+\end{verbatim}
+\end{enumerate}
+
+Po uruchomieniu:
+\begin{itemize}
+    \item Interfejs WWW powinien być dostępny pod adresem \texttt{http://localhost:5173}.
+    \item API powinno być dostępne pod \texttt{http://localhost:8080}.
+\end{itemize}
+
+\subsubsection{Uruchomienie węzła na maszynie zewnętrznej (Storage)}
+
+**Założenie:** Master powinien być osiągalny z maszyny zewnętrznej po TCP na porcie \texttt{9000} (lub innym skonfigurowanym).
+
+1. Binarka węzła powinna zostać zbudowana na maszynie docelowej:
+\begin{verbatim}
+cd backend
+go build -o bin/node ./cmd/node
+\end{verbatim}
+
+2. Węzeł storage powinien zostać uruchomiony z odpowiednimi flagami:
+\begin{itemize}
+    \item \texttt{-ip} było adresem nasłuchiwania (zwykle \texttt{0.0.0.0}),
+    \item \texttt{-advertise-ip} było adresem maszyny zewnętrznej osiągalnym z mastera,
+    \item \texttt{-seed-ip} było adresem mastera osiągalnym z maszyny zewnętrznej.
+\end{itemize}
+
+Przykład (master: \texttt{192.168.1.10:9000}, węzeł zewnętrzny: \texttt{192.168.1.20:9004}):
+
+\begin{verbatim}
+cd backend
+./bin/node \
+    -ip 0.0.0.0 \
+    -advertise-ip 192.168.1.20 \
+    -port 9004 \
+    -role storage \
+    -priority 4 \
+    -seed-ip 192.168.1.10 \
+    -seed-port 9000
+\end{verbatim}
+
 	\subsection*{Dodatkowe informacje}
-	Wymagania, podział pracy itd.
+
+    Piotr Skowroński - Architektóra systemu, praca nad testami, implementacja kluczowych algorytmów, backend, frontend.\\
+    Krzysztof Czuba - backend, frontend, praca nad elementami przechowywania plików, dokumentacja.
+
 	\newpage
 	\section*{Część II}
-	\subsection*{Opis działania} 
-	Tutaj uwzględniamy część matematyczną. Opisujemy całą teorię np.:
-	dla zadania związanego z sieciami neuronowymi - opisujemy całą budowę, algorytm uczenia i wszystkie wzory. Dla zadania związanego z kombinatoryką opisujemy całą teorię kombinatoryczną potrzebną do zrozumienia zadania (mile widziany przykład obliczeniowy).
-	
-	
+\subsection*{Opis działania}
+	Poniższa sekcja opisuje działanie systemu rozproszonego w ujęciu modelowym: zegary logiczne Lamporta, rozproszone blokady, wykrywanie zakleszczeń oraz elekcję lidera. Opis jest zgodny z implementacją w katalogu \texttt{backend/dfs/}.
+
+	\subsubsection*{Architektura i komunikacja}
+	System składa się z węzłów DFS (jeden \emph{master} oraz wiele \emph{storage}) oraz warstwy API+UI.
+	\begin{itemize}
+		\item Węzły DFS komunikują się po TCP poprzez wiadomości JSON (\texttt{MessageWithTime}) oraz osobny protokół binarny do strumieniowania plików.
+		\item Każdy węzeł utrzymuje listę \texttt{peers} oraz okresowo wysyła \texttt{heartbeat}.
+		\item Strumieniowanie plików odbywa się na porcie \texttt{port+100} (\texttt{StreamPortOffset}).
+	\end{itemize}
+
+	\subsubsection*{Zegary Lamporta}
+	W systemie stosowany jest zegar logiczny Lamporta $L_i$ dla każdego węzła $i$.
+	\begin{itemize}
+		\item Zdarzenie lokalne / wysłanie wiadomości: $L_i := L_i + 1$.
+		\item Odbiór wiadomości ze znacznikiem $t$: $L_i := \max(L_i, t) + 1$.
+	\end{itemize}
+	Dla uzyskania porządku całkowitego stosowane jest porównanie par $(L, id)$, gdzie \texttt{id} to UUID węzła (tie-breaker). Taki porządek jest wykorzystywany m.in. do sortowania żądań blokad.
+
+	\subsubsection*{Rozproszone blokady (kolejki żądań + ACK)}
+	Dla zasobu \texttt{resourceID} każdy węzeł utrzymuje kolejkę żądań \texttt{lockQueue[resourceID]}, sortowaną stabilnie po $(L, id)$. Węzeł może wejść do sekcji krytycznej jeśli:
+	\begin{enumerate}
+		\item jego żądanie jest pierwsze w kolejce,
+		\item otrzymał potwierdzenia \texttt{LockAck} od wszystkich znanych \texttt{peers}.
+	\end{enumerate}
+	Po wejściu do sekcji krytycznej węzeł rozgłasza \texttt{LockAcquired}, a po wyjściu \texttt{LockRelease}.
+
+	\subsubsection*{Model zakleszczeń: graf oczekiwań (wait-for graph)}
+	Zakleszczenie modelowane jest grafem skierowanym $G=(V,E)$, gdzie $V$ to węzły, a krawędź $u \rightarrow v$ oznacza, że węzeł $u$ czeka na zwolnienie zasobu przez $v$. Krawędzie są dodawane, gdy:
+	\begin{itemize}
+		\item nadejdzie \texttt{LockRequest} dla zasobu, który ma już właściciela (\texttt{lockHolders[resourceID]}),
+		\item a właściciel jest różny od węzła żądającego.
+	\end{itemize}
+	Master cyklicznie (co 10s) sprawdza, czy $G$ zawiera cykl. Cykl oznacza zakleszczenie.
+
+	\subsubsection*{Rozwiązywanie zakleszczeń}
+	W przypadku wykrycia cyklu wybierana jest ofiara (\emph{victim}) o najniższym priorytecie w cyklu. Master wysyła do niej komunikat \texttt{LockAbort}. Ofiara zwalnia swoje blokady (rozgłasza \texttt{LockRelease}), co usuwa krawędzie w grafie oczekiwań i przerywa cykl.
+
+	\subsubsection*{Elekcja lidera (Bully)}
+	Węzły mają priorytety (liczba całkowita). Gdy master przestaje odpowiadać (brak heartbeat), uruchamiany jest algorytm Bully:
+	\begin{itemize}
+		\item węzeł rozpoczynający elekcję wysyła \texttt{Election} do węzłów o wyższym priorytecie,
+		\item jeśli nie ma wyższych priorytetów lub nie nadejdzie \texttt{OK} w czasie, ogłasza się liderem,
+		\item lider rozgłasza \texttt{Coordinator}; węzły aktualizują role (\texttt{master}/\texttt{storage}).
+	\end{itemize}
+	Po elekcji nowy master uruchamia synchronizację metadanych i ewentualną naprawę replikacji.
+
+	\subsubsection*{Rozmieszczenie i replikacja plików (consistent hashing)}
+	Master utrzymuje pierścień haszujący z węzłami wirtualnymi (domyślnie 150 na węzeł). Dla identyfikatora pliku \texttt{FileID} wyliczany jest hash (CRC32) i wybierane są kolejne unikalne węzły na pierścieniu jako repliki (docelowo 3).
+	Po elekcji master zbiera metadane (\texttt{MetadataRequest/Response}), buduje \texttt{globalFileIndex} oraz dla plików z niedoborem replik inicjuje kopiowanie (\texttt{ReplicateFile}).
+
+	\subsubsection*{Przechowywanie lokalne (content-addressed storage)}
+	Storage zapisuje pliki adresowane zawartością: oblicza $\mathrm{SHA256}(data)$ i zapisuje jako \texttt{data/<prefix>/<hash>.dat} wraz z metadanymi \texttt{<hash>.metadata.json}. Indeks \texttt{index.json} przechowuje mapowanie \texttt{hash -> FileMetadata}. Identyczna zawartość daje ten sam hash (deduplikacja).
+
+	\subsubsection*{Upload/Download (streaming)}
+	Upload jest dwuetapowy: (1) inicjalizacja u mastera i wybór storage nodes, (2) bezpośrednie strumieniowanie binarne do storage. Storage po zapisaniu wysyła \texttt{StreamStoreAck} do mastera. Download polega na wskazaniu przez mastera jednego z replik oraz pobraniu strumieniem binarnym po hash.
+
+	\newpage
 	
 	\subsection*{Algorytmy}
-	Tutaj opisujemy rozwiązanie zadania. Dla przedmiotu programowanie będzie to wykorzystanie matematyki z poprzedniego zadania itd. Dla SSI będzie to ogólne działanie przetwarzania danych w oparciu o modele matematyczne z poprzedniego zadania. 
-	
-	
-	Pseudokod tworzymy w \LaTeX. Przykład:\\
+Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie.
+
+	\subsubsection*{Aktualizacja zegara Lamporta}
 	\begin{algorithm}[H]
-		\KwData{Dane wejściowe liczba $k$}
-		\KwResult{Brak }
-		$i:=0$\;
-		\While{$i<k$}{
-			Drukuj na ekran liczbę $i$\;
-			\eIf{$i\%2==0$}{
-				Wydrukj informację, że liczba $i$ jest liczbą parzystą\;
-			}{
-				Wydrukj informację, że liczba $i$ nie jest liczbą parzystą\;
-			}
+		\KwData{Lokalny zegar $L_i$, (opcjonalnie) odebrany znacznik czasu $t$}
+		\KwResult{Nowa wartość $L_i$}
+		\eIf{zdarzenie lokalne lub wysłanie wiadomości}{
+			$L_i \leftarrow L_i + 1$\;
+		}{
+			$L_i \leftarrow \max(L_i, t) + 1$\;
 		}
-		\caption{Algorytm drukowania informacji o liczbie parzystej/nieprarzystej.}
+		\caption{Zegar logiczny Lamporta.}
 	\end{algorithm}
 
+	\subsubsection*{Rozproszona blokada (kolejka Lamporta + ACK)}
+	\begin{algorithm}[H]
+		\KwData{Zasób \texttt{resourceID}, zbiór znanych węzłów \texttt{peers}}
+		\KwResult{Wejście do sekcji krytycznej lub oczekiwanie}
+			extbf{RequestLock(resourceID)}\;
+		$L_i \leftarrow L_i+1$\;
+		Utwórz \texttt{LockRequest(resourceID, nodeID=i, logicalTime=$L_i$)}\;
+		Dodaj żądanie do \texttt{lockQueue[resourceID]} i posortuj po $(logicalTime, nodeID)$\;
+		Zainicjalizuj \texttt{pendingAcks[resourceID]}\;
+		Rozgłoś \texttt{LockRequest} do wszystkich \texttt{peers}\;
+		\BlankLine
+			extbf{OnReceiveLockRequest(req)}\;
+		Dodaj \texttt{req} do lokalnej kolejki i posortuj\;
+		Jeśli \texttt{lockHolders[resourceID]} istnieje i $\neq req.nodeID$, dodaj krawędź $req.nodeID \rightarrow holder$ do grafu oczekiwań\;
+		Odeślij \texttt{LockAck(resourceID)} do nadawcy\;
+		\BlankLine
+			extbf{CanEnterCriticalSection(resourceID)}\;
+		\If{moje żądanie jest pierwsze w kolejce \textbf{i} liczba ACK $\geq |peers|$}{
+			\Return \texttt{true}\;
+		}
+		\Return \texttt{false}\;
+		\BlankLine
+			extbf{EnterCriticalSection(resourceID)}\;
+		\If{\textbf{CanEnterCriticalSection(resourceID)} == \texttt{true}}{
+			Rozgłoś \texttt{LockAcquired(resourceID)}\;
+		}
+		\caption{Rozproszona blokada zasobu.}
+	\end{algorithm}
+
+	\subsubsection*{Wykrywanie i usuwanie zakleszczeń (graf oczekiwań)}
+	\begin{algorithm}[H]
+		\KwData{Graf oczekiwań $G=(V,E)$, priorytety węzłów}
+		\KwResult{Przerwanie cyklu (jeśli wykryty)}
+		\If{węzeł nie jest \texttt{master}}{\Return}
+		\If{\textbf{HasCycle}$(G)$ zwraca \texttt{true} oraz ścieżkę cyklu $C$}{
+				exttt{victim} $\leftarrow \arg\min_{v \in C}\;priority(v)$\;
+			Wyślij \texttt{LockAbort} do \texttt{victim}\;
+		}
+		\caption{Detekcja cyklu i wybór ofiary (master).}
+	\end{algorithm}
+
+	\subsubsection*{Elekcja lidera Bully}
+	\begin{algorithm}[H]
+		\KwData{Priorytet własny $p_i$, lista \texttt{peers}}
+		\KwResult{Ustalenie roli \texttt{master}}
+		Wyślij \texttt{Election} do wszystkich węzłów o priorytecie $> p_i$\;
+		\If{nie istnieje żaden węzeł o priorytecie $> p_i$}{
+			Rozgłoś \texttt{Coordinator} i oczekuj krótko na ewentualny \texttt{Coordinator} od wyższego priorytetu\;
+			Ustaw rolę \texttt{master}\;
+			\Return
+		}
+		\If{otrzymano \texttt{OK} w czasie \texttt{electionTimeout}}{
+			Zakończ elekcję (wyższy priorytet przejmie rolę)\;
+			\Return
+		}
+		Rozgłoś \texttt{Coordinator} i ustaw rolę \texttt{master}\;
+		\caption{Algorytm elekcji lidera Bully.}
+	\end{algorithm}
+
+	\subsubsection*{Upload pliku (master + streaming do storage)}
+	\begin{algorithm}[H]
+		\KwData{\texttt{FileID}, \texttt{Filename}, \texttt{ContentType}, \texttt{Size}}
+		\KwResult{Zapis pliku na $r=3$ storage nodes i aktualizacja metadanych}
+			extbf{Master:}\;
+		Wybierz $r$ węzłów \texttt{storage} na podstawie consistent hashing (pierścień)\;
+		Utwórz \texttt{sessionID} i prześlij do wybranych węzłów \texttt{StreamUploadReady(sessionID, FileID, ...)}\;
+		Zwróć klientowi listę adresów strumieniowania (\texttt{ip:(port+100)})\;
+		\BlankLine
+			extbf{Storage:}\;
+		Po odebraniu strumienia zweryfikuj, czy \texttt{sessionID} istnieje\;
+		Odczytaj dokładnie \texttt{Size} bajtów i zapisz w \texttt{LocalStorage}, licząc SHA256\;
+		Wyślij do mastera \texttt{StreamStoreAck(sessionID, hash, nodeID)}\;
+		\caption{Przepływ uploadu przez protokół streaming.}
+	\end{algorithm}
+	
 	\subsection*{Bazy danych}
-	Sekcja wystepuje tylko w przypadku projektów bazodanowych.
-	
-	Należy pokazać przykładowe dane, które były wykorzystywane podczas uczenia klasyfikatorów.
-	
-	Strukturę bazy i relacje.
+	System wykorzystuje relacyjną bazę danych PostgreSQL do przechowywania informacji o użytkownikach oraz metadanych plików. Sama zawartość plików przechowywana jest w klastrze DFS (węzły \texttt{storage}), natomiast baza przechowuje jedynie metadane i stan replik.
+
+	\subsubsection*{Typy i tabele}
+	Schemat jest definiowany w migracji \texttt{backend/migrations/000001\_init.up.sql}.
+	\begin{itemize}
+		\item \texttt{users} -- użytkownicy aplikacji:
+		\begin{itemize}
+			\item \texttt{id} (UUID, PK), \texttt{username} (UNIQUE), \texttt{email} (UNIQUE), \texttt{password\_hash}, \texttt{role} (ENUM \texttt{user\_role}), \texttt{created\_at}, \texttt{updated\_at}.
+		\end{itemize}
+		\item \texttt{files} -- metadane plików (nie dane binarne):
+		\begin{itemize}
+			\item \texttt{id} (UUID, PK), \texttt{name}, \texttt{size}, \texttt{hash}, \texttt{content\_type}, \texttt{owner\_id} (FK \textrightarrow{} \texttt{users.id}), \texttt{created\_at}, \texttt{updated\_at}.
+		\end{itemize}
+		\item \texttt{replicas} -- informacja o replikach danego pliku w klastrze DFS:
+		\begin{itemize}
+			\item \texttt{id} (UUID, PK), \texttt{file\_id} (FK \textrightarrow{} \texttt{files.id}), \texttt{node\_id} (UUID węzła DFS), \texttt{status} (ENUM \texttt{replica\_status}), \texttt{created\_at}, \texttt{updated\_at}.
+		\end{itemize}
+	\end{itemize}
+
+	Dodatkowo zdefiniowane są typy ENUM:
+	\begin{itemize}
+		\item \texttt{user\_role} \;\{\texttt{user}, \texttt{admin}\},
+		\item \texttt{replica\_status} \;\{\texttt{synced}, \texttt{syncing}, \texttt{failed}\}.
+	\end{itemize}
+
+	W każdej tabeli pole \texttt{updated\_at} jest automatycznie aktualizowane przez trigger \texttt{update\_updated\_at\_column()}.
+
+	\subsubsection*{Relacje i integralność}
+	\begin{itemize}
+		\item Relacja \texttt{users (1) --- (N) files}: jeden użytkownik może posiadać wiele plików.
+		\item Relacja \texttt{files (1) --- (N) replicas}: jeden plik może mieć wiele replik na węzłach DFS.
+		\item Klucze obce mają \texttt{ON DELETE CASCADE} oraz \texttt{ON UPDATE CASCADE} (usunięcie użytkownika usuwa jego pliki; usunięcie pliku usuwa rekordy replik).
+	\end{itemize}
+
+	\subsubsection*{Diagram ERD}
+	\begin{figure}[htbp]
+		\centering
+		\begin{tikzpicture}[
+			entity/.style={draw, rounded corners, align=left, font=\small, inner sep=6pt},
+			rel/.style={-Latex, thick}
+		]
+		\node[entity] (users) {
+				extbf{users}\\
+			id (PK)\\
+			username (UQ)\\
+			email (UQ)\\
+			password\_hash\\
+			role: user\_role\\
+			created\_at\\
+			updated\_at
+		};
+
+		\node[entity, right=3.2cm of users] (files) {
+				extbf{files}\\
+			id (PK)\\
+			name\\
+			size\\
+			hash\\
+			content\_type\\
+			owner\_id (FK)\\
+			created\_at\\
+			updated\_at
+		};
+
+		\node[entity, right=3.2cm of files] (replicas) {
+				extbf{replicas}\\
+			id (PK)\\
+			file\_id (FK)\\
+			node\_id\\
+			status: replica\_status\\
+			created\_at\\
+			updated\_at
+		};
+
+		\draw[rel] (users.east) -- node[above, font=\small]{1} node[below, font=\small]{owner\_id} (files.west);
+		\draw[rel] (files.east) -- node[above, font=\small]{1} node[below, font=\small]{file\_id} (replicas.west);
+		\node[font=\small] at ($(files.west)!0.5!(users.east) + (0,0.65)$) {N};
+		\node[font=\small] at ($(replicas.west)!0.5!(files.east) + (0,0.65)$) {N};
+		\end{tikzpicture}
+		\caption{Diagram ERD bazy danych (PostgreSQL).}
+	\end{figure}
+    \newpage
 	\subsection*{Implementacja systemu}
-	Opis, zasada i działanie programu ze względu na podział na pliki, nastepnie	funkcje programu wraz ze szczegółowym opisem działania (np.: formie pseudokodu, czy odniesienia do równania)
+	Sekcja opisuje implementację systemu z perspektywy podziału na moduły, ich odpowiedzialności oraz kluczowych przepływów (DFS i API/UI).
+
+	\subsubsection*{Struktura projektu}
+	\begin{itemize}
+		\item \texttt{backend/} -- implementacja DFS (węzły) oraz API (Go).
+		\item \texttt{frontend/} -- interfejs WWW (React + Vite).
+		\item \texttt{backend/migrations/} -- migracje bazy danych (PostgreSQL).
+		\item \texttt{docker-compose.yml}, \texttt{Makefile}, \texttt{scripts/} -- uruchamianie środowiska i klastra.
+	\end{itemize}
+
+	\subsubsection*{Backend API (Go)}
+	Punkt wejścia API znajduje się w \texttt{backend/cmd/api/main.go}. Warstwa API jest zorganizowana typowo dla aplikacji usługowej:
+	\begin{itemize}
+		\item \texttt{backend/internal/handlers/} -- kontrolery HTTP (m.in. \texttt{auth\_handler.go}, \texttt{file\_handler.go}, \texttt{metrics\_handler.go}).
+		\item \texttt{backend/internal/services/} -- logika domenowa (np. autoryzacja, obsługa plików).
+		\item \texttt{backend/internal/database/} -- połączenie z PostgreSQL.
+		\item \texttt{backend/internal/models/} -- modele danych: \texttt{User}, \texttt{File}, \texttt{Replica}.
+		\item \texttt{backend/internal/middleware/} -- middleware (np. autoryzacja JWT).
+	\end{itemize}
+	API pełni rolę warstwy użytkowej: rejestracja/logowanie oraz operacje na plikach (upload/download/delete) delegowane do klastra DFS.
+
+	\subsubsection*{Węzły DFS (Go)}
+	Punkt wejścia węzła DFS znajduje się w \texttt{backend/cmd/node/main.go}. Rdzeń stanowi struktura \texttt{Node} w \texttt{backend/dfs/node/node.go}, która uruchamia:
+	\begin{itemize}
+		\item serwer TCP do komunikacji sterującej (wiadomości JSON),
+		\item serwer strumieniowania (port \texttt{port+100}) do transferu danych plików,
+		\item pętle monitorujące: heartbeat, zdrowie peerów, time-outy blokad, detekcję zakleszczeń.
+	\end{itemize}
+\begin{itemize}
+			\item \textbf{Protokół wiadomości.} Typy wiadomości i struktury danych są w \texttt{backend/dfs/common/types.go} (m.in. \texttt{MessageWithTime}, \texttt{LockRequest}). Każda wiadomość przenosi znacznik czasu Lamporta, a odbiorca aktualizuje zegar regułą $L_i := \max(L_i, t)+1$.
+
+			\item \textbf{Elekcja lidera.} Moduł \texttt{backend/dfs/election/bully.go} implementuje Bully; po wykryciu braku heartbeat lidera uruchamiana jest elekcja, a po wygranej ustawiana rola \texttt{master} oraz wykonywana synchronizacja metadanych.
+
+			\item \textbf{Przechowywanie danych.} \texttt{backend/dfs/storage/local\_storage.go} zapisuje pliki adresowane zawartością (SHA256) oraz metadane w plikach JSON, utrzymując indeks \texttt{index.json}. Dzięki temu identyczna zawartość mapuje się na ten sam \texttt{hash}.
+			\item \textbf{Rozmieszczenie i replikacja.} \texttt{backend/dfs/hashing/hash.go} realizuje consistent hashing z węzłami wirtualnymi (domyślnie 150). Master wybiera $r=3$ węzły storage jako repliki, a po elekcji wykonuje \texttt{MetadataRequest/Response} i naprawia brakujące repliki przez \texttt{ReplicateFile}.
+
+			\item \textbf{Zakleszczenia i blokady.} Blokady realizowane są przez kolejkę żądań sortowaną po $(L, id)$ i mechanizm ACK. Master buduje graf oczekiwań (wait-for graph) i wykrywa cykle (DFS), a następnie wysyła \texttt{LockAbort} do ofiary o najniższym priorytecie w cyklu.
+
+			\item \textbf{Streaming.} \texttt{backend/dfs/streaming/} zawiera binarny protokół transferu (nagłówek o stałej długości + stream danych) oraz zarządzanie sesjami uploadu. Inicjalizacja sesji odbywa się u mastera, a klient wysyła dane bezpośrednio do wybranych storage nodes.	
+	\end{itemize}
+	\subsubsection*{Frontend (React + Vite)}
+	Frontend znajduje się w \texttt{frontend/}.
+	\begin{itemize}
+		\item \texttt{src/pages/} -- widoki (np. logowanie, monitoring, węzły, pliki).
+		\item \texttt{src/hooks/} -- logika komunikacji z API (np. pobieranie listy plików, upload/download).
+		\item \texttt{src/components/} -- komponenty UI (lista plików, podgląd, upload, widok węzłów).
+	\end{itemize}
+	UI wykorzystuje API do operacji użytkownika, a sam transfer danych plików przebiega zgodnie z protokołem streaming (init u mastera + upload/download do storage).
+
+	\subsubsection*{Przykładowe fragmenty kodu}
+	Poniżej przedstawiono krótkie fragmenty implementacji (dla pełnego kodu patrz katalog \texttt{backend/}).
+	\begin{lstlisting}
+// Lamport: total order (t, nodeID)
+func CompareLamport(t1 int, id1 uuid.UUID, t2 int, id2 uuid.UUID) int {
+    if t1 < t2 { return -1 }
+    if t1 > t2 { return 1 }
+    // tie-break by node ID
+    if id1.String() < id2.String() { return -1 }
+    if id1.String() > id2.String() { return 1 }
+    return 0
+}
 	\begin{lstlisting}
 	Tutaj wklejamy fragment kodu, ktory chcemy opisac 
 	(bez polskich znakow).
