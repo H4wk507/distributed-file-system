@@ -38,6 +38,7 @@ type Node struct {
 
 	messageChan chan common.Message
 	stopChan    chan struct{}
+	stopOnce    sync.Once
 
 	logicalTime      int
 	logicalTimeMutex sync.Mutex
@@ -178,24 +179,28 @@ func (n *Node) Start(ctx context.Context) error {
 }
 
 func (n *Node) Stop() error {
-	n.Status = StatusStopping
-	close(n.stopChan)
+	var stopErr error
+	n.stopOnce.Do(func() {
+		n.Status = StatusStopping
+		close(n.stopChan)
 
-	if n.streamServer != nil {
-		if err := n.streamServer.Stop(); err != nil {
-			n.logger.Printf("Failed to stop stream server: %v", err)
+		if n.streamServer != nil {
+			if err := n.streamServer.Stop(); err != nil {
+				n.logger.Printf("Failed to stop stream server: %v", err)
+			}
 		}
-	}
 
-	if n.listener != nil {
-		if err := n.listener.Close(); err != nil {
-			return fmt.Errorf("failed to close listener: %w", err)
+		if n.listener != nil {
+			if err := n.listener.Close(); err != nil {
+				stopErr = fmt.Errorf("failed to close listener: %w", err)
+			}
+			n.listener = nil
 		}
-	}
 
-	n.Status = StatusOffline
-	n.logger.Println("Node stopped")
-	return nil
+		n.Status = StatusOffline
+		n.logger.Println("Node stopped")
+	})
+	return stopErr
 }
 
 func (n *Node) acceptConnections(ctx context.Context) {

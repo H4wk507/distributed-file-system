@@ -639,6 +639,7 @@ func (c *MasterClient) sendRequestWithRetry(msg common.Message, retries int) (*c
 	return nil, fmt.Errorf("all retries exhausted: %w", lastErr)
 }
 
+// Ping checks if the master node is reachable
 func (c *MasterClient) Ping() error {
 	masterIP, masterPort := c.getMasterAddr()
 	addr := fmt.Sprintf("%s:%d", masterIP, masterPort)

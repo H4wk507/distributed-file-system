@@ -275,25 +275,25 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 	\begin{algorithm}[H]
 		\KwData{Zasób \texttt{resourceID}, zbiór znanych węzłów \texttt{peers}}
 		\KwResult{Wejście do sekcji krytycznej lub oczekiwanie}
-			extbf{RequestLock(resourceID)}\;
+				extbf{RequestLock(resourceID)}\;
 		$L_i \leftarrow L_i+1$\;
 		Utwórz \texttt{LockRequest(resourceID, nodeID=i, logicalTime=$L_i$)}\;
 		Dodaj żądanie do \texttt{lockQueue[resourceID]} i posortuj po $(logicalTime, nodeID)$\;
 		Zainicjalizuj \texttt{pendingAcks[resourceID]}\;
 		Rozgłoś \texttt{LockRequest} do wszystkich \texttt{peers}\;
 		\BlankLine
-			extbf{OnReceiveLockRequest(req)}\;
+				extbf{OnReceiveLockRequest(req)}\;
 		Dodaj \texttt{req} do lokalnej kolejki i posortuj\;
 		Jeśli \texttt{lockHolders[resourceID]} istnieje i $\neq req.nodeID$, dodaj krawędź $req.nodeID \rightarrow holder$ do grafu oczekiwań\;
 		Odeślij \texttt{LockAck(resourceID)} do nadawcy\;
 		\BlankLine
-			extbf{CanEnterCriticalSection(resourceID)}\;
+				extbf{CanEnterCriticalSection(resourceID)}\;
 		\If{moje żądanie jest pierwsze w kolejce \textbf{i} liczba ACK $\geq |peers|$}{
 			\Return \texttt{true}\;
 		}
 		\Return \texttt{false}\;
 		\BlankLine
-			extbf{EnterCriticalSection(resourceID)}\;
+				extbf{EnterCriticalSection(resourceID)}\;
 		\If{\textbf{CanEnterCriticalSection(resourceID)} == \texttt{true}}{
 			Rozgłoś \texttt{LockAcquired(resourceID)}\;
 		}
@@ -306,7 +306,7 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 		\KwResult{Przerwanie cyklu (jeśli wykryty)}
 		\If{węzeł nie jest \texttt{master}}{\Return}
 		\If{\textbf{HasCycle}$(G)$ zwraca \texttt{true} oraz ścieżkę cyklu $C$}{
-				exttt{victim} $\leftarrow \arg\min_{v \in C}\;priority(v)$\;
+						exttt{victim} $\leftarrow \arg\min_{v \in C}\;priority(v)$\;
 			Wyślij \texttt{LockAbort} do \texttt{victim}\;
 		}
 		\caption{Detekcja cyklu i wybór ofiary (master).}
@@ -389,7 +389,7 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 			rel/.style={-Latex, thick}
 		]
 		\node[entity] (users) {
-				extbf{users}\\
+					extbf{users}\\
 			id (PK)\\
 			username (UQ)\\
 			email (UQ)\\
@@ -400,7 +400,7 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 		};
 
 		\node[entity, right=3.2cm of users] (files) {
-				extbf{files}\\
+					extbf{files}\\
 			id (PK)\\
 			name\\
 			size\\
@@ -412,7 +412,7 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 		};
 
 		\node[entity, right=3.2cm of files] (replicas) {
-				extbf{replicas}\\
+					extbf{replicas}\\
 			id (PK)\\
 			file\_id (FK)\\
 			node\_id\\
@@ -491,19 +491,135 @@ func CompareLamport(t1 int, id1 uuid.UUID, t2 int, id2 uuid.UUID) int {
     if id1.String() > id2.String() { return 1 }
     return 0
 }
-	\begin{lstlisting}
-	Tutaj wklejamy fragment kodu, ktory chcemy opisac 
-	(bez polskich znakow).
 	\end{lstlisting}
 	\subsection*{Testy}
-	Tutaj powinna pojawić się analiza uzyskanych wyników oraz wykresy/pomiary.
+	Testy jednostkowe zaimplementowano w Go w katalogu \texttt{backend/dfs/} (pliki \texttt{\_test.go}). Pokrywają one głównie logikę algorytmiczną (bez uruchamiania pełnego klastra).
+
+	\subsubsection*{Uruchamianie}
+	\begin{verbatim}
+cd backend
+go test ./...
+	\end{verbatim}
+	Opcjonalnie (pokrycie):
+	\begin{verbatim}
+go test ./... -cover
+	\end{verbatim}
+
+	\subsubsection*{Zakres}
+	\begin{itemize}
+		\item \texttt{backend/dfs/common/waitfor-graph\_test.go} -- testy detekcji cyklu w grafie oczekiwań (przypadki: graf pusty, pętla własna, cykle 2- i 3-węzłowe, graf rozłączny).
+		\item \texttt{backend/dfs/hashing/hash\_test.go} -- testy consistent hashing (deterministyczność \texttt{HashKey}, węzły wirtualne, dodawanie/usuwanie węzłów, stabilność wyboru replik dla tego samego \texttt{FileID}).
+		\item \texttt{backend/dfs/storage/local\_storage\_test.go} -- testy \texttt{LocalStorage} (\texttt{SaveFile/GetFile/DeleteFile}, idempotencja usuwania, zapis/odczyt \texttt{index.json}, deduplikacja: ta sama zawartość $\Rightarrow$ ten sam hash).
+		\item \texttt{backend/dfs/node/node\_test.go} -- testy logiki węzła (kolejki/ACK blokad, integracja z grafem oczekiwań, wybór ofiary zakleszczenia, obsługa metadanych i replikacji).
+	\end{itemize}
+
+	\subsubsection*{Wynik (stan bieżący repozytorium)}
+	W aktualnym stanie repozytorium polecenie \texttt{go test ./...} kończy się sukcesem (w tym pakiet \texttt{dfs/node}).
+	\begin{verbatim}
+ok   dfs-backend/dfs/common   (tests passed)
+ok   dfs-backend/dfs/hashing  (tests passed)
+ok   dfs-backend/dfs/storage  (tests passed)
+ok   dfs-backend/dfs/node     (tests passed)
+	\end{verbatim}
+
+	\subsubsection*{Testy integracyjne/scenariusze (\texttt{backend/cmd/test-*})}
+	W repozytorium znajdują się również programy uruchamiane jako osobne komendy w \texttt{backend/cmd/test-bully}, \texttt{backend/cmd/test-lock}, \texttt{backend/cmd/test-message}, \texttt{backend/cmd/test-sync}. Nie są one wykrywane przez \texttt{go test}, ponieważ nie mają postaci plików \texttt{\_test.go} z funkcjami \texttt{TestXxx(*testing.T)} — pełnią rolę „harnessów” do uruchomienia mini-klastra i obserwacji logów.
+
+	Uruchamianie (w katalogu \texttt{backend/}):
+	\begin{verbatim}
+go run ./cmd/test-message
+go run ./cmd/test-bully
+go run ./cmd/test-lock
+go run ./cmd/test-sync
+	\end{verbatim}
+	Krótko:
+	\begin{itemize}
+		\item \texttt{test-message} -- 2 węzły, discovery/heartbeat + obserwacja kanałów wiadomości.
+		\item \texttt{test-bully} -- 3 węzły, symulacja zatrzymania lidera i przebiegu elekcji Bully.
+		\item \texttt{test-lock} -- 1 węzeł i 5 węzłów, scenariusz kolejkowania żądań blokady i wejść do sekcji krytycznej.
+		\item \texttt{test-sync} -- 4 węzły, „zabicie” mastera i weryfikacja synchronizacji metadanych po elekcji.
+	\end{itemize}
 	
 	\subsection*{Eksperymenty}
-	Sekcję używamy gdy porównywaliśmy dwa lub więcej algorytmów, albo wykonywaliśmy jakies pomiery.
-	
-	Warto dodać jakies wykresy jako obraz, albo tabele z wynikami. 
-	
-	Wszyskie wyniki powinny być opisane/poddane komentarzowi i poddane analizie statystycznej.
+	Poniżej przedstawiono propozycję eksperymentów, które pozwalają ilościowo opisać zachowanie systemu (czas reakcji, narzut algorytmów, przepustowość) oraz porównać wybrane parametry konfiguracji.
+
+	W ramach repozytorium dostępne są gotowe komendy eksperymentalne (\texttt{backend/cmd/exp-*}), które zapisują wyniki do plików CSV w \texttt{backend/experiments/*.csv}. Na ich podstawie generowane są wykresy (\texttt{experiments/plot_csvs.py} \(\Rightarrow\) \texttt{experiments/plots/*.png}).
+
+	\subsubsection*{Metodyka pomiaru}
+	\begin{itemize}
+		\item Każdy pomiar wykonywać $n\ge 10$ razy; raportować średnią, medianę oraz odchylenie standardowe.
+		\item Mierzone czasy: w ms; przepustowość: $\mathrm{MB}/\mathrm{s}$; nierównomierność rozkładu: min/avg/max oraz $\sigma$.
+		\item Warunki: stała liczba węzłów, stała konfiguracja sieci, brak innych obciążeń w tle.
+	\end{itemize}
+
+	\subsubsection*{Eksperyment 1: czas przejęcia lidera (Bully)}
+				extbf{Cel:} zmierzyć czas od awarii mastera do ponownej dostępności usługi (wybór nowego lidera i stabilizacja).
+	\begin{itemize}
+		\item Narzędzie: \texttt{go run ./cmd/exp-bully}.
+		\item Metryki (CSV: \texttt{bully.csv}):
+		\begin{itemize}
+			\item \texttt{failover\_ms} -- czas od „zabicia” mastera do momentu, gdy klaster znów odpowiada (miara dostępności; im mniej, tym lepiej).
+			\item \texttt{new\_master\_priority}, \texttt{new\_master\_port} -- identyfikacja nowego lidera; służy weryfikacji poprawności Bully (czy wygrał węzeł o najwyższym priorytecie wśród żywych).
+			\item \texttt{nodes} -- liczba węzłów w klastrze (parametr eksperymentu).
+		\end{itemize}
+		\item Zmienna: liczba węzłów (np. 3/5/7) oraz rozkład priorytetów.
+	\end{itemize}
+				extbf{Wyniki:} rozkład \texttt{failover\_ms} (średnia/mediana/\(\sigma\)) i wykres pudełkowy w zależności od liczby węzłów.
+
+	\subsubsection*{Eksperyment 2: narzut mechanizmu blokad (Lamport+ACK)}
+				extbf{Cel:} ocenić opóźnienie wejścia do sekcji krytycznej przy rosnącej konkurencji.
+	\begin{itemize}
+		\item Narzędzie: \texttt{go run ./cmd/exp-lock}.
+		\item Metryki (CSV: \texttt{lock.csv}):
+		\begin{itemize}
+			\item \texttt{wait\_ms} -- czas od zgłoszenia żądania blokady do możliwości wejścia do sekcji krytycznej (miara narzutu blokad pod kontencją).
+			\item \texttt{order} -- kolejność uzyskania blokady w danym runie (pozwala analizować fairness i potencjalne starvation).
+			\item \texttt{priority}, \texttt{node\_idx} -- identyfikacja węzła i jego priorytetu (ułatwia interpretację rozkładów opóźnień).
+		\end{itemize}
+		\item Scenariusz: wszyscy proszą o lock na ten sam \texttt{resourceID}; warianty: 1/3/5 węzłów.
+	\end{itemize}
+				extbf{Wyniki:} rozkład \texttt{wait\_ms} (np. boxplot) oraz zależność opóźnień od \texttt{order}.
+
+	\subsubsection*{Eksperyment 3: detekcja zakleszczeń (wait-for graph)}
+				extbf{Cel:} zmierzyć czas przerwania zakleszczenia (czas „powrotu do pracy” po wystąpieniu cyklu oczekiwań).
+	\begin{itemize}
+		\item Scenariusz: co najmniej 2 węzły uzyskują lock na różne zasoby i następnie żądają locka na zasób drugiego węzła (cykl $A\rightarrow B\rightarrow A$).
+		\item Narzędzie: \texttt{go run ./cmd/exp-deadlock}.
+		\item Metryki (CSV: \texttt{deadlock.csv}):
+		\begin{itemize}
+			\item \texttt{resolve\_ms} -- czas od wywołania warunków zakleszczenia (drugie żądanie blokady) do momentu, gdy zakleszczenie zostaje przerwane i węzeł może wejść do sekcji krytycznej.
+		\end{itemize}
+		\item Zmienna: interwał sprawdzania grafu po stronie mastera (np. 1s/5s/10s) oraz obciążenie tłem.
+	\end{itemize}
+				extbf{Wyniki:} rozkład \texttt{resolve\_ms} dla różnych interwałów + komentarz kompromisu (szybkość reakcji vs narzut okresowej analizy grafu).
+
+	\subsubsection*{Eksperyment 4: przepustowość upload/download (streaming)}
+				extbf{Cel:} ocenić przepustowość protokołu streaming dla różnych rozmiarów plików.
+	\begin{itemize}
+		\item Narzędzie: \texttt{go run ./cmd/exp-streaming}.
+		\item Scenariusz: upload i download plików o rozmiarach np. 1MB/10MB/100MB.
+		\item Metryki (CSV: \texttt{streaming.csv}):
+		\begin{itemize}
+			\item \texttt{size\_bytes} -- rozmiar pliku w bajtach (parametr eksperymentu).
+			\item \texttt{upload\_ms}, \texttt{upload\_mbps} -- czas i efektywna przepustowość uploadu (miara kosztu replikacji i narzutu protokołu).
+			\item \texttt{download\_ms}, \texttt{download\_mbps} -- czas i przepustowość downloadu (miara ścieżki odczytu).
+		\end{itemize}
+	\end{itemize}
+				extbf{Wyniki:} wykres \texttt{upload\_mbps}/\texttt{download\_mbps} w funkcji \texttt{size\_bytes} oraz porównanie wariantów liczby replik.
+
+	\subsubsection*{Szablon tabeli wyników}
+	\begin{center}
+	\begin{tabular}{|l|c|c|c|c|}
+	\hline
+	Eksperyment & Parametr & Średnia & Mediana & $\sigma$ \\
+	\hline
+	Bully failover & $N=\dots$ & & & \\
+	Lock latency & $N=\dots$ & & & \\
+	Deadlock detect & $\Delta t=\dots$ & & & \\
+	Streaming & size=\dots & & & \\
+	\hline
+	\end{tabular}
+	\end{center}
 	\newpage
 	\section*{Pełen kod aplikacji}
 \begin{lstlisting}

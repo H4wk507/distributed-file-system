@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// File database model that represents a file stored in the system.
 type File struct {
 	ID uuid.UUID `db:"id" json:"id"`
 

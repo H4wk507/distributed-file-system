@@ -58,6 +58,7 @@ func (m *AuthMiddleware) RequireAdmin(next http.Handler) http.Handler {
 	}))
 }
 
+// validateToken parses and validates a JWT token string.
 func (m *AuthMiddleware) validateToken(tokenString string) (*UserClaims, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {

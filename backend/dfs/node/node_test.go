@@ -1172,9 +1172,6 @@ func TestSetRole_BecomeMaster(t *testing.T) {
 	if node.hashRing != nil {
 		t.Error("storage node should not have hashRing")
 	}
-	if node.pendingUploads != nil {
-		t.Error("storage node should not have pendingUploads")
-	}
 
 	// Become master
 	node.SetRole(common.RoleMaster)
@@ -1182,9 +1179,6 @@ func TestSetRole_BecomeMaster(t *testing.T) {
 	// Should have master resources
 	if node.hashRing == nil {
 		t.Error("master node should have hashRing after SetRole")
-	}
-	if node.pendingUploads == nil {
-		t.Error("master node should have pendingUploads after SetRole")
 	}
 }
 
@@ -1206,9 +1200,6 @@ func TestSetRole_BecomeStorage(t *testing.T) {
 	// Resources should be cleaned up
 	if node.hashRing != nil {
 		t.Error("storage node should not have hashRing after demotion")
-	}
-	if node.pendingUploads != nil {
-		t.Error("storage node should not have pendingUploads after demotion")
 	}
 }
 

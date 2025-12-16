@@ -54,6 +54,7 @@ func (s *FileService) CreateReplicas(fileID uuid.UUID, nodeIDs []uuid.UUID) erro
 	return nil
 }
 
+// ListFilesPaginated retrieves a paginated list of files for a given owner.
 func (s *FileService) ListFilesPaginated(ownerID uuid.UUID, page, perPage int) ([]models.File, int, error) {
 	if page < 1 {
 		page = 1
