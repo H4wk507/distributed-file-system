@@ -11,7 +11,9 @@
 \usepackage{listings}
 
 \usepackage{tikz}
+\usetikzlibrary{calc}
 \usetikzlibrary{positioning,arrows.meta}
+\usetikzlibrary{shapes.geometric}
 
 \lstloadlanguages{
   Go,        % Dodanie Go
@@ -72,13 +74,24 @@
 \setlength{\headheight}{0cm}
 
 \begin{document}
-	
-	\title{Modelowanie i analiza systemów informatycznych\\\small{dokumentacja projektu RSP - Rozproszony system plików}}
-	\author{Piotr Skowroński, Krzysztof Czuba, grupa XYZ}
-	\date{\today}
-
-	\maketitle
-	\newpage
+\begin{titlepage}
+	\centering
+	\vspace*{2cm}
+	\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.35\textwidth]{media/ps-logo.png}
+	\end{figure}
+	\vspace{1cm}
+	{\LARGE\bfseries Modelowanie i analiza systemów informatycznych\par}
+	\vspace{0.5cm}
+	{\large dokumentacja projektu RSP - Rozproszony system plików\par}
+	\vspace{2cm}
+	{\Large Piotr Skowroński, Krzysztof Czuba, grupa 2\par}
+	\vspace{0.5cm}
+	{\large \today\par}
+\end{titlepage}
+\tableofcontents
+\newpage
     \section{Część 1.}
 \subsection{Opis programu}
 Implementacja rozproszonego systemu plików, z uwzględnieniem problemu zakleszczeń i algorytmu elekcji.
@@ -88,13 +101,12 @@ System składa się z części serwerowej w której działa jeden węzeł głów
 \subsection{Wymagania wstępne i środowisko}
 
 \subsubsection{Wymagania systemowe i narzędzia}
-Do uruchomienia i wdrożenia systemu wymagane są następujące narzędzia:
+Do uruchomienia systemu wymagane są następujące narzędzia:
 \begin{itemize}
-    \item \textbf{System Operacyjny:} \textbf{Linux} (testowane lokalnie; inne systemy wymagają analogicznych narzędzi).
-    \item \textbf{Repozytorium:} \textbf{Git} (pobranie projektu).
-    \item \textbf{Backend i węzły DFS:} \textbf{Go} (\texttt{1.25+}).
-    \item \textbf{Baza Danych:} \textbf{PostgreSQL} (\texttt{5432/TCP}) -- baza danych dla API.
-    \item \textbf{Frontend:} \textbf{Node.js} (LTS, np. \texttt{20.x}) i \textbf{pnpm}.
+    \item \textbf{System Operacyjny:} \textbf{Linux/MacOS} (testowane lokalnie).
+    \item \textbf{Git} -- pobranie repozytorium.
+    \item \textbf{Docker} i \textbf{Docker Compose} -- uruchomienie backendu (API, baza danych, klaster RSP).
+    \item \textbf{Node.js} (\texttt{22.x}) i \textbf{pnpm} -- uruchomienie frontendu.
 \end{itemize}
 
 \subsubsection{Wymagania sieciowe}
@@ -106,153 +118,197 @@ Aby klaster działał poprawnie, należy zapewnić komunikację TCP:
 \end{itemize}
 
 
-\subsection{Instalacja i Wdrożenie (Przygotowanie)}
-Sekcja ta opisuje kroki niezbędne do przygotowania środowiska i binarek systemu. Kroki te są wykonywane zazwyczaj tylko raz.
+\subsection{Instalacja i Wdrożenie}
+Sekcja opisuje kroki niezbędne do uruchomienia systemu.
 
 \begin{enumerate}
-    \item Projekt powinien zostać pobrany:
+    \item Pobranie repozytorium:
 \begin{verbatim}
 git clone https://github.com/H4wk507/distributed-file-system
-cd distributed-filesystem
+cd distributed-file-system
 \end{verbatim}
 
-    \item Zależności frontendu powinny zostać zainstalowane:
+    \item Uruchomienie backendu (API + baza danych + klaster RSP):
+\begin{verbatim}
+docker compose up --build
+\end{verbatim}
+\end{enumerate}
+
+Backend uruchomi automatycznie PostgreSQL, wykona migracje oraz wystartuje klaster RSP (master + 3 węzły storage).
+
+\subsection{Instrukcja Uruchomienia}
+
+\subsubsection{Uruchomienie Backendu}
+Backend uruchamiany jest poprzez Docker Compose:
+\begin{verbatim}
+docker compose up --build
+\end{verbatim}
+
+Komenda ta uruchomi:
+\begin{itemize}
+    \item PostgreSQL (baza danych),
+    \item API HTTP (\texttt{http://localhost:8080}),
+    \item Klaster RSP: 1 master + 3 węzły storage.
+\end{itemize}
+
+\subsubsection{Uruchomienie Frontendu}
+Frontend uruchamiany jest osobno (wymaga Node.js 22.x i pnpm):
 \begin{verbatim}
 cd frontend
 pnpm install
-\end{verbatim}
-    
-    \item PostgreSQL powinien zostać uruchomiony lokalnie na \texttt{localhost:5432} (parametry powinny być zgodne z \texttt{.env} / \texttt{backend/.env}).
-
-    \item Migracje bazy danych powinny zostać wykonane (wymagane jest narzędzie \texttt{migrate}):
-\begin{verbatim}
-go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-make migrate-up
-\end{verbatim}
-\end{enumerate}
-
-\subsection{Instrukcja Uruchomienia i Obsługi}
-
-\subsubsection{Uruchomienie lokalne (Środowisko deweloperskie)}
-Po wykonaniu kroków instalacji, system w trybie deweloperskim można uruchomić za pomocą trzech terminali:
-\begin{enumerate}
-    \item \textbf{Uruchomienie Klastra DFS} (master + 3 storage):
-\begin{verbatim}
-cd backend
-./scripts/start-cluster.sh
-\end{verbatim}
-    \item \textbf{Uruchomienie API}:
-\begin{verbatim}
-cd backend
-go run ./cmd/api
-\end{verbatim}
-    \item \textbf{Uruchomienie Frontendu}:
-\begin{verbatim}
-cd frontend
 pnpm dev
 \end{verbatim}
-\end{enumerate}
 
-Po uruchomieniu:
-\begin{itemize}
-    \item Interfejs WWW powinien być dostępny pod adresem \texttt{http://localhost:5173}.
-    \item API powinno być dostępne pod \texttt{http://localhost:8080}.
-\end{itemize}
-
-\subsubsection{Uruchomienie węzła na maszynie zewnętrznej (Storage)}
-
-**Założenie:** Master powinien być osiągalny z maszyny zewnętrznej po TCP na porcie \texttt{9000} (lub innym skonfigurowanym).
-
-1. Binarka węzła powinna zostać zbudowana na maszynie docelowej:
-\begin{verbatim}
-cd backend
-go build -o bin/node ./cmd/node
-\end{verbatim}
-
-2. Węzeł storage powinien zostać uruchomiony z odpowiednimi flagami:
-\begin{itemize}
-    \item \texttt{-ip} było adresem nasłuchiwania (zwykle \texttt{0.0.0.0}),
-    \item \texttt{-advertise-ip} było adresem maszyny zewnętrznej osiągalnym z mastera,
-    \item \texttt{-seed-ip} było adresem mastera osiągalnym z maszyny zewnętrznej.
-\end{itemize}
-
-Przykład (master: \texttt{192.168.1.10:9000}, węzeł zewnętrzny: \texttt{192.168.1.20:9004}):
-
-\begin{verbatim}
-cd backend
-./bin/node \
-    -ip 0.0.0.0 \
-    -advertise-ip 192.168.1.20 \
-    -port 9004 \
-    -role storage \
-    -priority 4 \
-    -seed-ip 192.168.1.10 \
-    -seed-port 9000
-\end{verbatim}
+Po uruchomieniu interfejs WWW jest dostępny pod adresem \texttt{http://localhost:5173}.
 
 	\subsection*{Dodatkowe informacje}
 
-    Piotr Skowroński - Architektóra systemu, praca nad testami, implementacja kluczowych algorytmów, backend, frontend.\\
+    Piotr Skowroński - Architektura systemu, praca nad testami, implementacja kluczowych algorytmów, backend, frontend.\\
     Krzysztof Czuba - backend, frontend, praca nad elementami przechowywania plików, dokumentacja.
 
 	\newpage
 	\section*{Część II}
 \subsection*{Opis działania}
-	Poniższa sekcja opisuje działanie systemu rozproszonego w ujęciu modelowym: zegary logiczne Lamporta, rozproszone blokady, wykrywanie zakleszczeń oraz elekcję lidera. Opis jest zgodny z implementacją w katalogu \texttt{backend/dfs/}.
+	Poniższa sekcja opisuje praktyczną realizację mechanizmów rozproszonych w systemie, koncentrując się na sposobie rozwiązania kluczowych problemów: synchronizacji czasu, wzajemnego wykluczania, detekcji zakleszczeń oraz odporności na awarie. Cała logika rozproszona została zaimplementowana w katalogu \texttt{backend/dfs/}.
 
 	\subsubsection*{Architektura i komunikacja}
-	System składa się z węzłów DFS (jeden \emph{master} oraz wiele \emph{storage}) oraz warstwy API+UI.
-	\begin{itemize}
-		\item Węzły DFS komunikują się po TCP poprzez wiadomości JSON (\texttt{MessageWithTime}) oraz osobny protokół binarny do strumieniowania plików.
-		\item Każdy węzeł utrzymuje listę \texttt{peers} oraz okresowo wysyła \texttt{heartbeat}.
-		\item Strumieniowanie plików odbywa się na porcie \texttt{port+100} (\texttt{StreamPortOffset}).
-	\end{itemize}
-
-	\subsubsection*{Zegary Lamporta}
-	W systemie stosowany jest zegar logiczny Lamporta $L_i$ dla każdego węzła $i$.
-	\begin{itemize}
-		\item Zdarzenie lokalne / wysłanie wiadomości: $L_i := L_i + 1$.
-		\item Odbiór wiadomości ze znacznikiem $t$: $L_i := \max(L_i, t) + 1$.
-	\end{itemize}
-	Dla uzyskania porządku całkowitego stosowane jest porównanie par $(L, id)$, gdzie \texttt{id} to UUID węzła (tie-breaker). Taki porządek jest wykorzystywany m.in. do sortowania żądań blokad.
-
-	\subsubsection*{Rozproszone blokady (kolejki żądań + ACK)}
-	Dla zasobu \texttt{resourceID} każdy węzeł utrzymuje kolejkę żądań \texttt{lockQueue[resourceID]}, sortowaną stabilnie po $(L, id)$. Węzeł może wejść do sekcji krytycznej jeśli:
+	System został podzielony na trzy logiczne warstwy, co zapewnia separację odpowiedzialności:
+	
 	\begin{enumerate}
-		\item jego żądanie jest pierwsze w kolejce,
-		\item otrzymał potwierdzenia \texttt{LockAck} od wszystkich znanych \texttt{peers}.
+		\item \textbf{Frontend} – interfejs użytkownika w technologii React. Komunikuje się wyłącznie z API.
+		\item \textbf{API (Go)} – warstwa pośrednia odpowiadająca za autoryzację (JWT) i przechowywanie metadanych w relacyjnej bazie danych. API nie przechowuje zawartości plików, lecz deleguje operacje I/O do klastra za pośrednictwem \texttt{MasterClient}.
+		\item \textbf{Klaster RSP} – warstwa składowania i logiki rozproszonej. Składa się z jednego węzła \textbf{Master} (koordynator) oraz wielu węzłów \textbf{Storage} (przechowywanie danych).
 	\end{enumerate}
-	Po wejściu do sekcji krytycznej węzeł rozgłasza \texttt{LockAcquired}, a po wyjściu \texttt{LockRelease}.
 
-	\subsubsection*{Model zakleszczeń: graf oczekiwań (wait-for graph)}
-	Zakleszczenie modelowane jest grafem skierowanym $G=(V,E)$, gdzie $V$ to węzły, a krawędź $u \rightarrow v$ oznacza, że węzeł $u$ czeka na zwolnienie zasobu przez $v$. Krawędzie są dodawane, gdy:
+	\begin{figure}[htbp]
+		\centering
+		\begin{tikzpicture}[
+			box/.style={draw, rounded corners, minimum width=2.2cm, minimum height=0.8cm, align=center, font=\small},
+			db/.style={draw, cylinder, shape border rotate=90, aspect=0.3, minimum width=1.5cm, minimum height=1cm, font=\small},
+			arrow/.style={-Latex, thick},
+			node distance=1.2cm
+		]
+		% Frontend
+		\node[box] (frontend) {Frontend\\(React)};
+		
+		% API layer
+		\node[box, right=2cm of frontend] (api) {API\\(Go)};
+		\node[db, below=0.8cm of api] (db) {PostgreSQL};
+		
+		% MasterClient
+		\node[box, right=2cm of api] (client) {MasterClient};
+		
+		% RSP Cluster
+		\node[box, right=2cm of client, fill=blue!10] (master) {Master};
+		\node[box, above right=0.5cm and 1.5cm of master, fill=green!10] (s1) {Storage 1};
+		\node[box, right=1.5cm of master, fill=green!10] (s2) {Storage 2};
+		\node[box, below right=0.5cm and 1.5cm of master, fill=green!10] (s3) {Storage 3};
+		
+		% Arrows
+		\draw[arrow, <->] (frontend) -- node[above, font=\scriptsize]{HTTP} (api);
+		\draw[arrow, <->] (api) -- (db);
+		\draw[arrow, <->] (api) -- (client);
+		\draw[arrow, <->] (client) -- node[above, font=\scriptsize]{TCP} (master);
+		\draw[arrow, <->] (master) -- (s1);
+		\draw[arrow, <->] (master) -- (s2);
+		\draw[arrow, <->] (master) -- (s3);
+		\draw[arrow, <->, dashed] (s1) -- (s2);
+		\draw[arrow, <->, dashed] (s2) -- (s3);
+		
+		% Labels
+		\node[below=0.3cm of frontend, font=\scriptsize] {port 5173};
+		\node[below=0.3cm of api, font=\scriptsize] {};
+		\node[below=0.3cm of master, font=\scriptsize] {port 9000};
+		\end{tikzpicture}
+		\caption{Architektura systemu RSP.}
+	\end{figure}
+
+	Węzły komunikują się dwoma kanałami:
 	\begin{itemize}
-		\item nadejdzie \texttt{LockRequest} dla zasobu, który ma już właściciela (\texttt{lockHolders[resourceID]}),
-		\item a właściciel jest różny od węzła żądającego.
+		\item \textbf{JSON po TCP} – do wymiany komunikatów sterujących (elekcja lidera, żądania blokad, heartbeat).
+		\item \textbf{Protokół binarny} – dedykowany do efektywnego transferu plików (uniknięcie narzutu base64/JSON).
 	\end{itemize}
-	Master cyklicznie (co 10s) sprawdza, czy $G$ zawiera cykl. Cykl oznacza zakleszczenie.
 
-	\subsubsection*{Rozwiązywanie zakleszczeń}
-	W przypadku wykrycia cyklu wybierana jest ofiara (\emph{victim}) o najniższym priorytecie w cyklu. Master wysyła do niej komunikat \texttt{LockAbort}. Ofiara zwalnia swoje blokady (rozgłasza \texttt{LockRelease}), co usuwa krawędzie w grafie oczekiwań i przerywa cykl.
+	Podczas uruchamiania nowy węzeł łączy się ze znanym adresem (seed node), wysyła komunikat powitalny (\texttt{MessageDiscovery}) i pobiera listę pozostałych węzłów w klastrze.
 
-	\subsubsection*{Elekcja lidera (Bully)}
-	Węzły mają priorytety (liczba całkowita). Gdy master przestaje odpowiadać (brak heartbeat), uruchamiany jest algorytm Bully:
+	\subsubsection*{Synchronizacja czasu (Zegary Lamporta)}
+	W systemach rozproszonych brak wspólnego zegara fizycznego utrudnia ustalenie kolejności zdarzeń. Aby rozwiązać ten problem, zastosowaliśmy \textbf{Zegary Lamporta}.
+	
+	Mechanizm działa następująco: każdy węzeł utrzymuje lokalny licznik. Przy każdym zdarzeniu lokalnym lub wysłaniu wiadomości licznik jest inkrementowany. Przy odbiorze wiadomości węzeł aktualizuje swój zegar do wartości $max(lokalny, otrzymany) + 1$.
+	
+	Dzięki temu możemy określić relację "działo się przed" dla zdarzeń w systemie. W przypadku konfliktów (ta sama wartość zegara), jako kryterium rozstrzygające (tie-breaker) wykorzystujemy unikalne ID węzła. Pozwala to na deterministyczne sortowanie żądań dostępu do zasobów.
+
+	\subsubsection*{Wzajemne wykluczanie (Rozproszone blokady)}
+	Dostęp do współdzielonych zasobów (plików) musi być synchronizowany, aby uniknąć niespójności. Zaimplementowaliśmy algorytm oparty na kolejkach żądań i wymianie komunikatów.
+	
+	Procedura uzyskania blokady:
+	\begin{enumerate}
+		\item Węzeł rozsyła komunikat \texttt{LockRequest} do wszystkich pozostałych węzłów.
+		\item Każdy węzeł (w tym wnioskujący) dodaje żądanie do swojej lokalnej kolejki, sortowanej według czasu Lamporta.
+		\item Odbiorcy odsyłają potwierdzenie (\texttt{LockAck}).
+		\item Wnioskujący wchodzi do sekcji krytycznej tylko wtedy, gdy:
+		\begin{itemize}
+			\item otrzymał potwierdzenia od \textbf{wszystkich} węzłów,
+			\item jego żądanie znajduje się na \textbf{szczycie} kolejki (ma najniższy znacznik czasu).
+		\end{itemize}
+		\item Po zakończeniu operacji węzeł zwalnia blokadę, a pozostali usuwają jego żądanie z kolejki.
+	\end{enumerate}
+	Wymóg uzyskania potwierdzeń od całej grupy gwarantuje spójność widoku kolejki.
+
+	\subsubsection*{Wykrywanie zakleszczeń (Graf oczekiwań)}
+	System blokad jest podatny na zakleszczenia (deadlock), np. gdy węzeł A czeka na zasób zajęty przez B, a B czeka na zasób zajęty przez A.
+	
+	Rolę arbitra pełni tutaj \textbf{Master}:
 	\begin{itemize}
-		\item węzeł rozpoczynający elekcję wysyła \texttt{Election} do węzłów o wyższym priorytecie,
-		\item jeśli nie ma wyższych priorytetów lub nie nadejdzie \texttt{OK} w czasie, ogłasza się liderem,
-		\item lider rozgłasza \texttt{Coordinator}; węzły aktualizują role (\texttt{master}/\texttt{storage}).
+		\item Utrzymuje globalny \textbf{graf oczekiwań} (wait-for graph), odwzorowujący zależności między węzłami.
+		\item Cyklicznie (co 10s) analizuje graf w poszukiwaniu cykli.
+		\item Wykrycie cyklu oznacza zakleszczenie. Master wybiera węzeł o najniższym priorytecie w cyklu ("ofiarę") i wysyła mu polecenie \texttt{LockAbort}.
+		\item Węzeł-ofiara musi zwolnić blokady, co przerywa cykl i umożliwia postęp pozostałym procesom.
 	\end{itemize}
-	Po elekcji nowy master uruchamia synchronizację metadanych i ewentualną naprawę replikacji.
 
-	\subsubsection*{Rozmieszczenie i replikacja plików (consistent hashing)}
-	Master utrzymuje pierścień haszujący z węzłami wirtualnymi (domyślnie 150 na węzeł). Dla identyfikatora pliku \texttt{FileID} wyliczany jest hash (CRC32) i wybierane są kolejne unikalne węzły na pierścieniu jako repliki (docelowo 3).
-	Po elekcji master zbiera metadane (\texttt{MetadataRequest/Response}), buduje \texttt{globalFileIndex} oraz dla plików z niedoborem replik inicjuje kopiowanie (\texttt{ReplicateFile}).
+	\subsubsection*{Awaria i rekonfiguracja (Algorytm Bully)}
+	System musi być odporny na awarię koordynatora (Mastera). W takim przypadku pozostałe węzły muszą automatycznie wyłonić nowego lidera. Zastosowaliśmy algorytm \textbf{Bully}.
+	
+	\begin{enumerate}
+		\item Węzły monitorują komunikaty \texttt{Heartbeat} od Mastera. Brak sygnału przez 15s jest traktowany jako awaria.
+		\item Węzeł wykrywający awarię rozpoczyna elekcję, wysyłając zapytanie do wszystkich węzłów o wyższym identyfikatorze (priorytecie).
+		\item Jeśli węzeł o wyższym priorytecie odpowie, przejmuje proces elekcji.
+		\item Jeśli żaden węzeł o wyższym priorytecie nie odpowie, inicjator ogłasza się nowym Masterem.
+	\end{enumerate}
+	Po objęciu funkcji nowy Master przeprowadza synchronizację metadanych, zbierając raporty o posiadanych plikach od wszystkich węzłów Storage, co przywraca spójność systemu.
 
-	\subsubsection*{Przechowywanie lokalne (content-addressed storage)}
-	Storage zapisuje pliki adresowane zawartością: oblicza $\mathrm{SHA256}(data)$ i zapisuje jako \texttt{data/<prefix>/<hash>.dat} wraz z metadanymi \texttt{<hash>.metadata.json}. Indeks \texttt{index.json} przechowuje mapowanie \texttt{hash -> FileMetadata}. Identyczna zawartość daje ten sam hash (deduplikacja).
+	\subsubsection*{Dystrybucja danych (Consistent Hashing)}
+	Aby zapewnić równomierne obciążenie i minimalizować konieczność przenoszenia danych przy zmianach w klastrze, zastosowaliśmy \textbf{Consistent Hashing}.
+	
+	\begin{itemize}
+		\item Przestrzeń haszy traktowana jest jako pierścień.
+		\item Każdy węzeł fizyczny jest mapowany na wiele punktów na pierścieniu (węzły wirtualne), co poprawia rozkład danych.
+		\item Plik jest przypisywany do węzła, którego pozycja na pierścieniu jest pierwszą napotkaną zgodnie z ruchem wskazówek zegara od hasha pliku.
+	\end{itemize}
+	Dodatkowo system utrzymuje \textbf{współczynnik replikacji $r=3$}. Plik jest replikowany na trzy kolejne węzły fizyczne na pierścieniu, co zabezpiecza dane przed awarią pojedynczych maszyn.
 
-	\subsubsection*{Upload/Download (streaming)}
-	Upload jest dwuetapowy: (1) inicjalizacja u mastera i wybór storage nodes, (2) bezpośrednie strumieniowanie binarne do storage. Storage po zapisaniu wysyła \texttt{StreamStoreAck} do mastera. Download polega na wskazaniu przez mastera jednego z replik oraz pobraniu strumieniem binarnym po hash.
+	\subsubsection*{Warstwa składowania (Storage)}
+	Węzły przechowują pliki w systemie \textbf{Content-Addressed Storage}, gdzie identyfikatorem pliku jest hash jego zawartości (SHA256).
+	\begin{itemize}
+		\item Ścieżka pliku: \texttt{data/ab/abcd123...dat}
+		\item Metadane: \texttt{data/ab/abcd123...metadata.json}
+	\end{itemize}
+	Podejście to zapewnia natywną \textbf{deduplikację} – identyczne pliki przesłane przez różnych użytkowników są przechowywane fizycznie tylko raz, co oszczędza przestrzeń dyskową.
+
+	\subsubsection*{Transfer plików (Streaming)}
+	Ze względu na ograniczenia wydajnościowe formatu JSON przy przesyłaniu dużych porcji danych binarnych, zaimplementowaliśmy dedykowany protokół oparty na czystym TCP.
+	
+	Struktura pakietu przesyłanego w protokole strumieniowym (łącznie 64 bajty nagłówka):
+	\begin{itemize}
+		\item \textbf{Magic Byte} (1 bajt): Identyfikator operacji (\texttt{0x01} - Upload, \texttt{0x02} - Download).
+		\item \textbf{Session ID} (36 bajtów): Unikalny identyfikator sesji (UUID) w postaci ciągu znaków.
+		\item \textbf{File Size} (8 bajtów): Rozmiar przesyłanego pliku (int64, Big Endian).
+		\item \textbf{Chunk Size} (4 bajty): Rozmiar pojedynczego fragmentu danych (int32, Big Endian).
+		\item \textbf{Reserved} (15 bajtów): Pole rezerwowe (padding) dla wyrównania do 64 bajtów.
+		\item \textbf{Data Stream}: Ciągły strumień bajtów pliku (payload) o długości \texttt{File Size}.
+	\end{itemize}
+
+	Proces przesyłania odbywa się z pominięciem Mastera: klient otrzymuje od Mastera listę adresów węzłów Storage, a następnie nawiązuje z nimi bezpośrednie połączenia równoległe. Eliminuje to wąskie gardło na węźle koordynującym.
 
 	\newpage
 	
@@ -275,25 +331,25 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 	\begin{algorithm}[H]
 		\KwData{Zasób \texttt{resourceID}, zbiór znanych węzłów \texttt{peers}}
 		\KwResult{Wejście do sekcji krytycznej lub oczekiwanie}
-				extbf{RequestLock(resourceID)}\;
+		\textbf{RequestLock(resourceID)}\;
 		$L_i \leftarrow L_i+1$\;
 		Utwórz \texttt{LockRequest(resourceID, nodeID=i, logicalTime=$L_i$)}\;
 		Dodaj żądanie do \texttt{lockQueue[resourceID]} i posortuj po $(logicalTime, nodeID)$\;
 		Zainicjalizuj \texttt{pendingAcks[resourceID]}\;
 		Rozgłoś \texttt{LockRequest} do wszystkich \texttt{peers}\;
 		\BlankLine
-				extbf{OnReceiveLockRequest(req)}\;
+		\textbf{OnReceiveLockRequest(req)}\;
 		Dodaj \texttt{req} do lokalnej kolejki i posortuj\;
 		Jeśli \texttt{lockHolders[resourceID]} istnieje i $\neq req.nodeID$, dodaj krawędź $req.nodeID \rightarrow holder$ do grafu oczekiwań\;
 		Odeślij \texttt{LockAck(resourceID)} do nadawcy\;
 		\BlankLine
-				extbf{CanEnterCriticalSection(resourceID)}\;
+		\textbf{CanEnterCriticalSection(resourceID)}\;
 		\If{moje żądanie jest pierwsze w kolejce \textbf{i} liczba ACK $\geq |peers|$}{
 			\Return \texttt{true}\;
 		}
 		\Return \texttt{false}\;
 		\BlankLine
-				extbf{EnterCriticalSection(resourceID)}\;
+		\textbf{EnterCriticalSection(resourceID)}\;
 		\If{\textbf{CanEnterCriticalSection(resourceID)} == \texttt{true}}{
 			Rozgłoś \texttt{LockAcquired(resourceID)}\;
 		}
@@ -306,7 +362,7 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 		\KwResult{Przerwanie cyklu (jeśli wykryty)}
 		\If{węzeł nie jest \texttt{master}}{\Return}
 		\If{\textbf{HasCycle}$(G)$ zwraca \texttt{true} oraz ścieżkę cyklu $C$}{
-						exttt{victim} $\leftarrow \arg\min_{v \in C}\;priority(v)$\;
+			\texttt{victim} $\leftarrow \arg\min_{v \in C}\;priority(v)$\;
 			Wyślij \texttt{LockAbort} do \texttt{victim}\;
 		}
 		\caption{Detekcja cyklu i wybór ofiary (master).}
@@ -334,12 +390,12 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 	\begin{algorithm}[H]
 		\KwData{\texttt{FileID}, \texttt{Filename}, \texttt{ContentType}, \texttt{Size}}
 		\KwResult{Zapis pliku na $r=3$ storage nodes i aktualizacja metadanych}
-			extbf{Master:}\;
+		\textbf{Master:}\;
 		Wybierz $r$ węzłów \texttt{storage} na podstawie consistent hashing (pierścień)\;
 		Utwórz \texttt{sessionID} i prześlij do wybranych węzłów \texttt{StreamUploadReady(sessionID, FileID, ...)}\;
 		Zwróć klientowi listę adresów strumieniowania (\texttt{ip:(port+100)})\;
 		\BlankLine
-			extbf{Storage:}\;
+		\textbf{Storage:}\;
 		Po odebraniu strumienia zweryfikuj, czy \texttt{sessionID} istnieje\;
 		Odczytaj dokładnie \texttt{Size} bajtów i zapisz w \texttt{LocalStorage}, licząc SHA256\;
 		Wyślij do mastera \texttt{StreamStoreAck(sessionID, hash, nodeID)}\;
@@ -347,7 +403,7 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 	\end{algorithm}
 	
 	\subsection*{Bazy danych}
-	System wykorzystuje relacyjną bazę danych PostgreSQL do przechowywania informacji o użytkownikach oraz metadanych plików. Sama zawartość plików przechowywana jest w klastrze DFS (węzły \texttt{storage}), natomiast baza przechowuje jedynie metadane i stan replik.
+	System wykorzystuje relacyjną bazę danych PostgreSQL do przechowywania informacji o użytkownikach oraz metadanych plików. Sama zawartość plików przechowywana jest w klastrze RSP (węzły \texttt{storage}), natomiast baza przechowuje jedynie metadane i stan replik.
 
 	\subsubsection*{Typy i tabele}
 	Schemat jest definiowany w migracji \texttt{backend/migrations/000001\_init.up.sql}.
@@ -358,11 +414,12 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 		\end{itemize}
 		\item \texttt{files} -- metadane plików (nie dane binarne):
 		\begin{itemize}
-			\item \texttt{id} (UUID, PK), \texttt{name}, \texttt{size}, \texttt{hash}, \texttt{content\_type}, \texttt{owner\_id} (FK \textrightarrow{} \texttt{users.id}), \texttt{created\_at}, \texttt{updated\_at}.
+			\item \texttt{id} (UUID, PK), \texttt{name}, \texttt{size} (BIGINT), \texttt{hash}, \texttt{content\_type}, \texttt{owner\_id} (FK \textrightarrow{} \texttt{users.id}), \texttt{created\_at}, \texttt{updated\_at}.
 		\end{itemize}
-		\item \texttt{replicas} -- informacja o replikach danego pliku w klastrze DFS:
+		\item \texttt{replicas} -- informacja o replikach danego pliku w klastrze RSP:
 		\begin{itemize}
-			\item \texttt{id} (UUID, PK), \texttt{file\_id} (FK \textrightarrow{} \texttt{files.id}), \texttt{node\_id} (UUID węzła DFS), \texttt{status} (ENUM \texttt{replica\_status}), \texttt{created\_at}, \texttt{updated\_at}.
+			\item \texttt{id} (UUID, PK), \texttt{file\_id} (FK \textrightarrow{} \texttt{files.id}), \texttt{node\_id} (UUID węzła RSP), \texttt{status} (ENUM \texttt{replica\_status}), \texttt{created\_at}, \texttt{updated\_at}.
+			\item Constraint: \texttt{UNIQUE(file\_id, node\_id)} -- zapobiega duplikatom replik na tym samym węźle.
 		\end{itemize}
 	\end{itemize}
 
@@ -377,7 +434,7 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 	\subsubsection*{Relacje i integralność}
 	\begin{itemize}
 		\item Relacja \texttt{users (1) --- (N) files}: jeden użytkownik może posiadać wiele plików.
-		\item Relacja \texttt{files (1) --- (N) replicas}: jeden plik może mieć wiele replik na węzłach DFS.
+		\item Relacja \texttt{files (1) --- (N) replicas}: jeden plik może mieć wiele replik na węzłach RSP.
 		\item Klucze obce mają \texttt{ON DELETE CASCADE} oraz \texttt{ON UPDATE CASCADE} (usunięcie użytkownika usuwa jego pliki; usunięcie pliku usuwa rekordy replik).
 	\end{itemize}
 
@@ -386,58 +443,68 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 		\centering
 		\begin{tikzpicture}[
 			entity/.style={draw, rounded corners, align=left, font=\small, inner sep=6pt},
-			rel/.style={-Latex, thick}
+			crow/.style={thick}
 		]
-		\node[entity] (users) {
-					extbf{users}\\
-			id (PK)\\
-			username (UQ)\\
-			email (UQ)\\
-			password\_hash\\
-			role: user\_role\\
-			created\_at\\
-			updated\_at
-		};
+	\node[entity] (users) {
+		\textbf{users}\\
+		id (PK)\\
+		username (UQ)\\
+		email (UQ)\\
+		password\_hash\\
+		role: user\_role\\
+		created\_at\\
+		updated\_at
+	};
 
-		\node[entity, right=3.2cm of users] (files) {
-					extbf{files}\\
-			id (PK)\\
-			name\\
-			size\\
-			hash\\
-			content\_type\\
-			owner\_id (FK)\\
-			created\_at\\
-			updated\_at
-		};
+	\node[entity, right=3.5cm of users] (files) {
+		\textbf{files}\\
+		id (PK)\\
+		name\\
+		size (BIGINT)\\
+		hash\\
+		content\_type\\
+		owner\_id (FK)\\
+		created\_at\\
+		updated\_at
+	};
 
-		\node[entity, right=3.2cm of files] (replicas) {
-					extbf{replicas}\\
-			id (PK)\\
-			file\_id (FK)\\
-			node\_id\\
-			status: replica\_status\\
-			created\_at\\
-			updated\_at
-		};
+	\node[entity, right=3.5cm of files] (replicas) {
+		\textbf{replicas}\\
+		id (PK)\\
+		file\_id (FK)\\
+		node\_id (UQ*)\\
+		status: replica\_status\\
+		created\_at\\
+		updated\_at
+	};
 
-		\draw[rel] (users.east) -- node[above, font=\small]{1} node[below, font=\small]{owner\_id} (files.west);
-		\draw[rel] (files.east) -- node[above, font=\small]{1} node[below, font=\small]{file\_id} (replicas.west);
-		\node[font=\small] at ($(files.west)!0.5!(users.east) + (0,0.65)$) {N};
-		\node[font=\small] at ($(replicas.west)!0.5!(files.east) + (0,0.65)$) {N};
+		% users -> files (1:N) crow's foot notation
+		\draw[crow] (users.east) -- (files.west);
+		\draw[crow] ($(users.east)+(0.15,0)$) -- ++(0,0.1) -- ++(0,-0.2); % "1" side (single line)
+		\draw[crow] ($(files.west)+(-0.2,0)$) -- ++(-0.15,0.12); % crow foot
+		\draw[crow] ($(files.west)+(-0.2,0)$) -- ++(-0.15,-0.12);
+		\draw[crow] ($(files.west)+(-0.2,0)$) -- ++(-0.15,0);
+		
+		% files -> replicas (1:N) crow's foot notation
+		\draw[crow] (files.east) -- (replicas.west);
+		\draw[crow] ($(files.east)+(0.15,0)$) -- ++(0,0.1) -- ++(0,-0.2); % "1" side
+		\draw[crow] ($(replicas.west)+(-0.2,0)$) -- ++(-0.15,0.12); % crow foot
+		\draw[crow] ($(replicas.west)+(-0.2,0)$) -- ++(-0.15,-0.12);
+		\draw[crow] ($(replicas.west)+(-0.2,0)$) -- ++(-0.15,0);
+
 		\end{tikzpicture}
-		\caption{Diagram ERD bazy danych (PostgreSQL).}
+		\caption{Diagram ERD bazy danych. *UQ = część klucza unikalnego (file\_id, node\_id).}
 	\end{figure}
     \newpage
 	\subsection*{Implementacja systemu}
-	Sekcja opisuje implementację systemu z perspektywy podziału na moduły, ich odpowiedzialności oraz kluczowych przepływów (DFS i API/UI).
+	Sekcja opisuje implementację systemu z perspektywy podziału na moduły, ich odpowiedzialności oraz kluczowych przepływów (RSP i API/UI).
 
 	\subsubsection*{Struktura projektu}
 	\begin{itemize}
-		\item \texttt{backend/} -- implementacja DFS (węzły) oraz API (Go).
+		\item \texttt{backend/} -- implementacja RSP (węzły) oraz API (Go).
 		\item \texttt{frontend/} -- interfejs WWW (React + Vite).
 		\item \texttt{backend/migrations/} -- migracje bazy danych (PostgreSQL).
-		\item \texttt{docker-compose.yml}, \texttt{Makefile}, \texttt{scripts/} -- uruchamianie środowiska i klastra.
+		\item \texttt{docker-compose.yml} -- uruchamianie środowiska i klastra.
 	\end{itemize}
 
 	\subsubsection*{Backend API (Go)}
@@ -449,26 +516,51 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 		\item \texttt{backend/internal/models/} -- modele danych: \texttt{User}, \texttt{File}, \texttt{Replica}.
 		\item \texttt{backend/internal/middleware/} -- middleware (np. autoryzacja JWT).
 	\end{itemize}
-	API pełni rolę warstwy użytkowej: rejestracja/logowanie oraz operacje na plikach (upload/download/delete) delegowane do klastra DFS.
+	API pełni rolę warstwy użytkowej: rejestracja/logowanie oraz operacje na plikach (upload/download/delete) delegowane do klastra RSP.
 
-	\subsubsection*{Węzły DFS (Go)}
-	Punkt wejścia węzła DFS znajduje się w \texttt{backend/cmd/node/main.go}. Rdzeń stanowi struktura \texttt{Node} w \texttt{backend/dfs/node/node.go}, która uruchamia:
+	\subsubsection*{Klient Master (MasterClient)}
+	Komunikacja między warstwą API a klastrem RSP odbywa się przez \texttt{MasterClient} (\texttt{backend/dfs/client/master\_client.go}). Jest to klient TCP, który:
+	\begin{itemize}
+		\item utrzymuje połączenie z aktualnym masterem klastra,
+		\item automatycznie odkrywa nowego mastera po awarii (failover) poprzez odpytanie seed nodes,
+		\item udostępnia metody do operacji na plikach:
+		\begin{itemize}
+			\item \texttt{InitStreamUpload} / \texttt{WriteChunk} / \texttt{Finalize} -- upload w trybie chunked (dla dużych plików),
+			\item \texttt{UploadFileStream} -- upload całego pliku w jednym wywołaniu,
+			\item \texttt{DownloadFileStream} -- download z weryfikacją hash SHA256,
+			\item \texttt{DeleteFile} -- usunięcie pliku z klastra.
+		\end{itemize}
+	\end{itemize}
+	
+	Przepływ uploadu przez \texttt{MasterClient}:
+	\begin{enumerate}
+		\item API wywołuje \texttt{InitStreamUpload} -- master zwraca \texttt{sessionID} oraz listę adresów storage nodes.
+		\item \texttt{MasterClient} otwiera połączenia TCP do wszystkich storage nodes i wysyła nagłówek binarny.
+		\item API streamuje dane przez \texttt{WriteChunk} -- dane są równolegle wysyłane do wszystkich replik.
+		\item \texttt{Finalize} czeka na potwierdzenia od storage nodes i zwraca hash pliku.
+	\end{enumerate}
+
+	\subsubsection*{Węzły RSP (Go)}
+	Punkt wejścia węzła RSP znajduje się w \texttt{backend/cmd/node/main.go}. Rdzeń stanowi struktura \texttt{Node} w \texttt{backend/dfs/node/node.go}, która uruchamia:
 	\begin{itemize}
 		\item serwer TCP do komunikacji sterującej (wiadomości JSON),
 		\item serwer strumieniowania (port \texttt{port+100}) do transferu danych plików,
 		\item pętle monitorujące: heartbeat, zdrowie peerów, time-outy blokad, detekcję zakleszczeń.
 	\end{itemize}
-\begin{itemize}
-			\item \textbf{Protokół wiadomości.} Typy wiadomości i struktury danych są w \texttt{backend/dfs/common/types.go} (m.in. \texttt{MessageWithTime}, \texttt{LockRequest}). Każda wiadomość przenosi znacznik czasu Lamporta, a odbiorca aktualizuje zegar regułą $L_i := \max(L_i, t)+1$.
+	
+	Kluczowe moduły:
+	\begin{itemize}
+		\item \textbf{Protokół wiadomości.} Typy wiadomości i struktury danych są w \texttt{backend/dfs/common/types.go} (m.in. \texttt{MessageWithTime}, \texttt{LockRequest}). Każda wiadomość przenosi znacznik czasu Lamporta, a odbiorca aktualizuje zegar regułą $L_i := \max(L_i, t)+1$.
 
-			\item \textbf{Elekcja lidera.} Moduł \texttt{backend/dfs/election/bully.go} implementuje Bully; po wykryciu braku heartbeat lidera uruchamiana jest elekcja, a po wygranej ustawiana rola \texttt{master} oraz wykonywana synchronizacja metadanych.
+		\item \textbf{Elekcja lidera.} Moduł \texttt{backend/dfs/election/bully.go} implementuje Bully; po wykryciu braku heartbeat lidera uruchamiana jest elekcja, a po wygranej ustawiana rola \texttt{master} oraz wykonywana synchronizacja metadanych.
 
-			\item \textbf{Przechowywanie danych.} \texttt{backend/dfs/storage/local\_storage.go} zapisuje pliki adresowane zawartością (SHA256) oraz metadane w plikach JSON, utrzymując indeks \texttt{index.json}. Dzięki temu identyczna zawartość mapuje się na ten sam \texttt{hash}.
-			\item \textbf{Rozmieszczenie i replikacja.} \texttt{backend/dfs/hashing/hash.go} realizuje consistent hashing z węzłami wirtualnymi (domyślnie 150). Master wybiera $r=3$ węzły storage jako repliki, a po elekcji wykonuje \texttt{MetadataRequest/Response} i naprawia brakujące repliki przez \texttt{ReplicateFile}.
+		\item \textbf{Przechowywanie danych.} \texttt{backend/dfs/storage/local\_storage.go} zapisuje pliki adresowane zawartością (SHA256) oraz metadane w plikach JSON, utrzymując indeks \texttt{index.json}. Dzięki temu identyczna zawartość mapuje się na ten sam \texttt{hash}.
+		
+		\item \textbf{Rozmieszczenie i replikacja.} \texttt{backend/dfs/hashing/hash.go} realizuje consistent hashing z węzłami wirtualnymi (domyślnie 150). Master wybiera $r=3$ węzły storage jako repliki, a po elekcji wykonuje \texttt{MetadataRequest/Response} i naprawia brakujące repliki przez \texttt{ReplicateFile}.
 
-			\item \textbf{Zakleszczenia i blokady.} Blokady realizowane są przez kolejkę żądań sortowaną po $(L, id)$ i mechanizm ACK. Master buduje graf oczekiwań (wait-for graph) i wykrywa cykle (DFS), a następnie wysyła \texttt{LockAbort} do ofiary o najniższym priorytecie w cyklu.
+		\item \textbf{Zakleszczenia i blokady.} Blokady realizowane są przez kolejkę żądań sortowaną po $(L, id)$ i mechanizm ACK. Master buduje graf oczekiwań (wait-for graph) i wykrywa cykle (DFS), a następnie wysyła \texttt{LockAbort} do ofiary o najniższym priorytecie w cyklu.
 
-			\item \textbf{Streaming.} \texttt{backend/dfs/streaming/} zawiera binarny protokół transferu (nagłówek o stałej długości + stream danych) oraz zarządzanie sesjami uploadu. Inicjalizacja sesji odbywa się u mastera, a klient wysyła dane bezpośrednio do wybranych storage nodes.	
+		\item \textbf{Streaming.} \texttt{backend/dfs/streaming/} zawiera binarny protokół transferu (nagłówek o stałej długości + stream danych) oraz zarządzanie sesjami uploadu. Inicjalizacja sesji odbywa się u mastera, a klient wysyła dane bezpośrednio do wybranych storage nodes.	
 	\end{itemize}
 	\subsubsection*{Frontend (React + Vite)}
 	Frontend znajduje się w \texttt{frontend/}.
@@ -480,16 +572,54 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 	UI wykorzystuje API do operacji użytkownika, a sam transfer danych plików przebiega zgodnie z protokołem streaming (init u mastera + upload/download do storage).
 
 	\subsubsection*{Przykładowe fragmenty kodu}
-	Poniżej przedstawiono krótkie fragmenty implementacji (dla pełnego kodu patrz katalog \texttt{backend/}).
+	Poniżej przedstawiono fragmenty implementacji ilustrujące kluczowe mechanizmy rozproszone.
+
+	\textbf{Warunek wejścia do sekcji krytycznej} (\texttt{node/node.go}) -- węzeł może wejść tylko gdy jest pierwszy w kolejce i zebrał wszystkie ACK:
 	\begin{lstlisting}
-// Lamport: total order (t, nodeID)
-func CompareLamport(t1 int, id1 uuid.UUID, t2 int, id2 uuid.UUID) int {
-    if t1 < t2 { return -1 }
-    if t1 > t2 { return 1 }
-    // tie-break by node ID
-    if id1.String() < id2.String() { return -1 }
-    if id1.String() > id2.String() { return 1 }
-    return 0
+func (n *Node) CanEnterCriticalSection(resourceID string) bool {
+    // ... timeout handling ...
+    first := n.lockQueue[resourceID][0]
+    if first.NodeID != n.ID {
+        return false  // nie jestesmy pierwsi w kolejce
+    }
+    expectedAcks := len(n.peers)
+    receivedAcks := 0
+    for _, acked := range n.pendingAcks[resourceID] {
+        if acked { receivedAcks++ }
+    }
+    return receivedAcks >= expectedAcks
+}
+	\end{lstlisting}
+
+	\textbf{Porównywanie żądań blokad} (\texttt{common/lamport.go}) -- sortowanie żądań po czasie Lamporta z tie-breakiem na ID węzła:
+	\begin{lstlisting}
+func CompareLockRequests(a, b *LockRequest) bool {
+    if a.LogicalTime != b.LogicalTime {
+        return a.LogicalTime < b.LogicalTime
+    }
+    return a.NodeID.String() < b.NodeID.String()
+}
+	\end{lstlisting}
+
+	\textbf{Reakcja na elekcję Bully} (\texttt{election/bully.go}) -- węzeł o wyższym priorytecie odpowiada OK i sam startuje elekcję:
+	\begin{lstlisting}
+func (b *BullyElector) handleElection(ctx context.Context, msg Message) error {
+    var nodeInfo common.NodeInfo
+    json.Unmarshal(msg.Payload, &nodeInfo)
+
+    if b.node.GetPriority() > nodeInfo.Priority {
+        // Mamy wyzszy priorytet - odpowiadamy OK
+        msgOk := Message{Type: MessageOK, From: b.node.GetID()}
+        go b.node.SendMessage(nodeInfo.IP, nodeInfo.Port, msgOk)
+        b.electionMutex.Lock()
+        inProgress := b.electionInProgress
+        b.electionMutex.Unlock()
+        // Sami startujemy elekcje (moze wygramy)
+        if !b.electionInProgress && b.node.GetRole() != RoleMaster {
+            go b.StartElection(ctx)
+        }
+    }
+    return nil
 }
 	\end{lstlisting}
 	\subsection*{Testy}
@@ -497,12 +627,7 @@ func CompareLamport(t1 int, id1 uuid.UUID, t2 int, id2 uuid.UUID) int {
 
 	\subsubsection*{Uruchamianie}
 	\begin{verbatim}
-cd backend
-go test ./...
-	\end{verbatim}
-	Opcjonalnie (pokrycie):
-	\begin{verbatim}
-go test ./... -cover
+make test
 	\end{verbatim}
 
 	\subsubsection*{Zakres}
@@ -514,7 +639,7 @@ go test ./... -cover
 	\end{itemize}
 
 	\subsubsection*{Wynik (stan bieżący repozytorium)}
-	W aktualnym stanie repozytorium polecenie \texttt{go test ./...} kończy się sukcesem (w tym pakiet \texttt{dfs/node}).
+	W aktualnym stanie repozytorium polecenie \texttt{make test} kończy się sukcesem (w tym pakiet \texttt{dfs/node}).
 	\begin{verbatim}
 ok   dfs-backend/dfs/common   (tests passed)
 ok   dfs-backend/dfs/hashing  (tests passed)
@@ -523,7 +648,7 @@ ok   dfs-backend/dfs/node     (tests passed)
 	\end{verbatim}
 
 	\subsubsection*{Testy integracyjne/scenariusze (\texttt{backend/cmd/test-*})}
-	W repozytorium znajdują się również programy uruchamiane jako osobne komendy w \texttt{backend/cmd/test-bully}, \texttt{backend/cmd/test-lock}, \texttt{backend/cmd/test-message}, \texttt{backend/cmd/test-sync}. Nie są one wykrywane przez \texttt{go test}, ponieważ nie mają postaci plików \texttt{\_test.go} z funkcjami \texttt{TestXxx(*testing.T)} — pełnią rolę „harnessów” do uruchomienia mini-klastra i obserwacji logów.
+	Oprócz testów jednostkowych w repozytorium znajdują się scenariusze integracyjne, które uruchamiają mini-klaster wielu węzłów i weryfikują poprawność działania mechanizmów rozproszonych w praktyce. Scenariusze te wymagają ręcznego uruchomienia i analizy logów -- nie zostały zintegrowane z automatycznym \texttt{make test}.
 
 	Uruchamianie (w katalogu \texttt{backend/}):
 	\begin{verbatim}
@@ -532,18 +657,18 @@ go run ./cmd/test-bully
 go run ./cmd/test-lock
 go run ./cmd/test-sync
 	\end{verbatim}
-	Krótko:
+	Opis scenariuszy:
 	\begin{itemize}
-		\item \texttt{test-message} -- 2 węzły, discovery/heartbeat + obserwacja kanałów wiadomości.
-		\item \texttt{test-bully} -- 3 węzły, symulacja zatrzymania lidera i przebiegu elekcji Bully.
-		\item \texttt{test-lock} -- 1 węzeł i 5 węzłów, scenariusz kolejkowania żądań blokady i wejść do sekcji krytycznej.
-		\item \texttt{test-sync} -- 4 węzły, „zabicie” mastera i weryfikacja synchronizacji metadanych po elekcji.
+		\item \texttt{test-message} -- 2 węzły: weryfikacja discovery i wymiany heartbeat.
+		\item \texttt{test-bully} -- 3 węzły: symulacja awarii lidera i przebieg elekcji Bully.
+		\item \texttt{test-lock} -- 5 węzłów: kolejkowanie żądań blokad i wejścia do sekcji krytycznej.
+		\item \texttt{test-sync} -- 4 węzły: awaria mastera i synchronizacja metadanych po elekcji.
 	\end{itemize}
 	
 	\subsection*{Eksperymenty}
 	Poniżej przedstawiono propozycję eksperymentów, które pozwalają ilościowo opisać zachowanie systemu (czas reakcji, narzut algorytmów, przepustowość) oraz porównać wybrane parametry konfiguracji.
 
-	W ramach repozytorium dostępne są gotowe komendy eksperymentalne (\texttt{backend/cmd/exp-*}), które zapisują wyniki do plików CSV w \texttt{backend/experiments/*.csv}. Na ich podstawie generowane są wykresy (\texttt{experiments/plot_csvs.py} \(\Rightarrow\) \texttt{experiments/plots/*.png}).
+	W ramach repozytorium dostępne są gotowe komendy eksperymentalne (\texttt{backend/cmd/exp-*}), które zapisują wyniki do plików CSV w \texttt{backend/experiments/*.csv}. Na ich podstawie generowane są wykresy (\texttt{experiments/plot\_csvs.py} \(\Rightarrow\) \texttt{experiments/plots/*.png}).
 
 	\subsubsection*{Metodyka pomiaru}
 	\begin{itemize}
@@ -553,76 +678,127 @@ go run ./cmd/test-sync
 	\end{itemize}
 
 	\subsubsection*{Eksperyment 1: czas przejęcia lidera (Bully)}
-				extbf{Cel:} zmierzyć czas od awarii mastera do ponownej dostępności usługi (wybór nowego lidera i stabilizacja).
+	\textbf{Cel:} zmierzyć czas od awarii mastera do ponownej dostępności usługi (wybór nowego lidera i stabilizacja).
 	\begin{itemize}
 		\item Narzędzie: \texttt{go run ./cmd/exp-bully}.
 		\item Metryki (CSV: \texttt{bully.csv}):
 		\begin{itemize}
-			\item \texttt{failover\_ms} -- czas od „zabicia” mastera do momentu, gdy klaster znów odpowiada (miara dostępności; im mniej, tym lepiej).
-			\item \texttt{new\_master\_priority}, \texttt{new\_master\_port} -- identyfikacja nowego lidera; służy weryfikacji poprawności Bully (czy wygrał węzeł o najwyższym priorytecie wśród żywych).
-			\item \texttt{nodes} -- liczba węzłów w klastrze (parametr eksperymentu).
+			\item \texttt{failover\_ms} -- czas od „zabicia" mastera do momentu, gdy klaster znów odpowiada.
+			\item \texttt{new\_master\_priority} -- weryfikacja poprawności Bully (czy wygrał węzeł o najwyższym priorytecie).
 		\end{itemize}
-		\item Zmienna: liczba węzłów (np. 3/5/7) oraz rozkład priorytetów.
 	\end{itemize}
-				extbf{Wyniki:} rozkład \texttt{failover\_ms} (średnia/mediana/\(\sigma\)) i wykres pudełkowy w zależności od liczby węzłów.
+	\textbf{Wyniki (10 przebiegów, 3 węzły):}
+	\begin{center}
+	\begin{tabular}{|l|c|}
+	\hline
+	Metryka & Wartość \\
+	\hline
+	Średnia \texttt{failover\_ms} & 15659 ms \\
+	Mediana & 16020 ms \\
+	Min / Max & 14196 / 16032 ms \\
+	\hline
+	\end{tabular}
+	\end{center}
+	We wszystkich przebiegach nowym masterem został węzeł o priorytecie 5 (najwyższym wśród żywych) -- algorytm Bully działa poprawnie. Czas failover to głównie timeout heartbeat (15s) + czas elekcji.
+	
+	\begin{figure}[htbp]
+		\centering
+		\includegraphics[width=0.7\textwidth]{experiments/plots/bully_failover_hist.png}
+		\caption{Rozkład czasu failover (Bully) -- histogram z 10 przebiegów.}
+	\end{figure}
 
 	\subsubsection*{Eksperyment 2: narzut mechanizmu blokad (Lamport+ACK)}
-				extbf{Cel:} ocenić opóźnienie wejścia do sekcji krytycznej przy rosnącej konkurencji.
+	\textbf{Cel:} ocenić opóźnienie wejścia do sekcji krytycznej przy rosnącej konkurencji.
 	\begin{itemize}
 		\item Narzędzie: \texttt{go run ./cmd/exp-lock}.
 		\item Metryki (CSV: \texttt{lock.csv}):
 		\begin{itemize}
-			\item \texttt{wait\_ms} -- czas od zgłoszenia żądania blokady do możliwości wejścia do sekcji krytycznej (miara narzutu blokad pod kontencją).
-			\item \texttt{order} -- kolejność uzyskania blokady w danym runie (pozwala analizować fairness i potencjalne starvation).
-			\item \texttt{priority}, \texttt{node\_idx} -- identyfikacja węzła i jego priorytetu (ułatwia interpretację rozkładów opóźnień).
+			\item \texttt{wait\_ms} -- czas od zgłoszenia żądania blokady do wejścia do sekcji krytycznej.
+			\item \texttt{order} -- kolejność uzyskania blokady (analiza fairness).
 		\end{itemize}
-		\item Scenariusz: wszyscy proszą o lock na ten sam \texttt{resourceID}; warianty: 1/3/5 węzłów.
+		\item Scenariusz: 5 węzłów jednocześnie żąda blokady na ten sam zasób.
 	\end{itemize}
-				extbf{Wyniki:} rozkład \texttt{wait\_ms} (np. boxplot) oraz zależność opóźnień od \texttt{order}.
-
-	\subsubsection*{Eksperyment 3: detekcja zakleszczeń (wait-for graph)}
-				extbf{Cel:} zmierzyć czas przerwania zakleszczenia (czas „powrotu do pracy” po wystąpieniu cyklu oczekiwań).
-	\begin{itemize}
-		\item Scenariusz: co najmniej 2 węzły uzyskują lock na różne zasoby i następnie żądają locka na zasób drugiego węzła (cykl $A\rightarrow B\rightarrow A$).
-		\item Narzędzie: \texttt{go run ./cmd/exp-deadlock}.
-		\item Metryki (CSV: \texttt{deadlock.csv}):
-		\begin{itemize}
-			\item \texttt{resolve\_ms} -- czas od wywołania warunków zakleszczenia (drugie żądanie blokady) do momentu, gdy zakleszczenie zostaje przerwane i węzeł może wejść do sekcji krytycznej.
-		\end{itemize}
-		\item Zmienna: interwał sprawdzania grafu po stronie mastera (np. 1s/5s/10s) oraz obciążenie tłem.
-	\end{itemize}
-				extbf{Wyniki:} rozkład \texttt{resolve\_ms} dla różnych interwałów + komentarz kompromisu (szybkość reakcji vs narzut okresowej analizy grafu).
-
-	\subsubsection*{Eksperyment 4: przepustowość upload/download (streaming)}
-				extbf{Cel:} ocenić przepustowość protokołu streaming dla różnych rozmiarów plików.
-	\begin{itemize}
-		\item Narzędzie: \texttt{go run ./cmd/exp-streaming}.
-		\item Scenariusz: upload i download plików o rozmiarach np. 1MB/10MB/100MB.
-		\item Metryki (CSV: \texttt{streaming.csv}):
-		\begin{itemize}
-			\item \texttt{size\_bytes} -- rozmiar pliku w bajtach (parametr eksperymentu).
-			\item \texttt{upload\_ms}, \texttt{upload\_mbps} -- czas i efektywna przepustowość uploadu (miara kosztu replikacji i narzutu protokołu).
-			\item \texttt{download\_ms}, \texttt{download\_mbps} -- czas i przepustowość downloadu (miara ścieżki odczytu).
-		\end{itemize}
-	\end{itemize}
-				extbf{Wyniki:} wykres \texttt{upload\_mbps}/\texttt{download\_mbps} w funkcji \texttt{size\_bytes} oraz porównanie wariantów liczby replik.
-
-	\subsubsection*{Szablon tabeli wyników}
+	\textbf{Wyniki (10 przebiegów, 5 węzłów):}
 	\begin{center}
-	\begin{tabular}{|l|c|c|c|c|}
+	\begin{tabular}{|c|c|}
 	\hline
-	Eksperyment & Parametr & Średnia & Mediana & $\sigma$ \\
+	Kolejność (order) & Średni \texttt{wait\_ms} \\
 	\hline
-	Bully failover & $N=\dots$ & & & \\
-	Lock latency & $N=\dots$ & & & \\
-	Deadlock detect & $\Delta t=\dots$ & & & \\
-	Streaming & size=\dots & & & \\
+	1 (pierwszy) & $\sim$12 ms \\
+	2 & $\sim$223 ms \\
+	3 & $\sim$433 ms \\
+	4 & $\sim$645 ms \\
+	5 (ostatni) & $\sim$856 ms \\
 	\hline
 	\end{tabular}
 	\end{center}
-	\newpage
-	\section*{Pełen kod aplikacji}
-\begin{lstlisting}
-Tutaj wklejamy pelen kod. 
-\end{lstlisting}
+	Opóźnienie rośnie liniowo z kolejnością -- każdy węzeł czeka na zakończenie operacji poprzedników. Sekcja krytyczna trwa $\sim$200 ms, co odpowiada przyrostowi między kolejnymi pozycjami.
+	
+	\begin{figure}[htbp]
+		\centering
+		\includegraphics[width=0.7\textwidth]{experiments/plots/lock_wait_boxplot_by_order.png}
+		\caption{Czas oczekiwania na blokadę w zależności od kolejności (boxplot).}
+	\end{figure}
+
+	\subsubsection*{Eksperyment 3: detekcja zakleszczeń (wait-for graph)}
+	\textbf{Cel:} zmierzyć czas przerwania zakleszczenia (czas „powrotu do pracy" po wystąpieniu cyklu oczekiwań).
+	\begin{itemize}
+		\item Narzędzie: \texttt{go run ./cmd/exp-deadlock}.
+		\item Scenariusz: 2 węzły tworzą cykl $A\rightarrow B\rightarrow A$ (każdy trzyma lock i żąda locka drugiego).
+		\item Metryki (CSV: \texttt{deadlock.csv}):
+		\begin{itemize}
+			\item \texttt{resolve\_ms} -- czas od powstania zakleszczenia do jego przerwania przez mastera.
+		\end{itemize}
+	\end{itemize}
+	\textbf{Wyniki (10 przebiegów):}
+	\begin{center}
+	\begin{tabular}{|l|c|}
+	\hline
+	Metryka & Wartość \\
+	\hline
+	Średnia \texttt{resolve\_ms} & 9317 ms \\
+	Mediana & 9317 ms \\
+	Min / Max & 9311 / 9322 ms \\
+	$\sigma$ & 3.5 ms \\
+	\hline
+	\end{tabular}
+	\end{center}
+	Czas rozwiązania zakleszczenia jest bardzo stabilny ($\sigma \approx 3.5$ ms) i wynosi $\sim$9.3s. Wynika to z interwału sprawdzania grafu przez mastera (10s) -- zakleszczenie zostaje wykryte przy najbliższym cyklu analizy.
+	
+	\begin{figure}[htbp]
+		\centering
+		\includegraphics[width=0.7\textwidth]{experiments/plots/deadlock_resolve_hist.png}
+		\caption{Rozkład czasu rozwiązania zakleszczenia -- histogram.}
+	\end{figure}
+
+	\subsubsection*{Eksperyment 4: przepustowość upload/download (streaming)}
+	\textbf{Cel:} ocenić przepustowość protokołu streaming.
+	\begin{itemize}
+		\item Narzędzie: \texttt{go run ./cmd/exp-streaming}.
+		\item Scenariusz: upload i download plików 16 MB.
+		\item Metryki (CSV: \texttt{streaming.csv}):
+		\begin{itemize}
+			\item \texttt{upload\_ms}, \texttt{upload\_mbps} -- czas i przepustowość uploadu.
+			\item \texttt{download\_ms}, \texttt{download\_mbps} -- czas i przepustowość downloadu.
+		\end{itemize}
+	\end{itemize}
+	\textbf{Wyniki (10 przebiegów, plik 16 MB):}
+	\begin{center}
+	\begin{tabular}{|l|c|c|}
+	\hline
+	Operacja & Średni czas & Średnia przepustowość \\
+	\hline
+	Upload & 345 ms & 392 MB/s \\
+	Download & 55 ms & 1110 MB/s* \\
+	\hline
+	\end{tabular}
+	\end{center}
+	*Część downloadów zakończyła się w $<$1 ms (cache OS/dysku), co zawyża średnią przepustowość. Upload jest wolniejszy, ponieważ dane są replikowane równolegle na 3 węzły storage.
+	
+	\begin{figure}[htbp]
+		\centering
+		\includegraphics[width=0.7\textwidth]{experiments/plots/streaming_throughput.png}
+		\caption{Przepustowość upload/download w kolejnych przebiegach.}
+	\end{figure}
+
 \end{document}

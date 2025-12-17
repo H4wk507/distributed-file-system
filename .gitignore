@@ -32,3 +32,4 @@ go.work
 *.aux
 *.toc
 *.log
+*.out
