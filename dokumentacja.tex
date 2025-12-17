@@ -4,6 +4,8 @@
 \usepackage[utf8x]{inputenc}
 \usepackage{hyperref}
 \usepackage{url}
+\usepackage{amsmath}
+\usepackage{amssymb}
 \usepackage[]{algorithm2e}
 \usepackage{listings}
 
@@ -93,6 +95,22 @@
 \tableofcontents
 \newpage
     \section{Część 1.}
+
+\subsection{Definicja modelu systemu}
+System został zaprojektowany jako \textbf{rozproszony system plików (DFS)} działający w architekturze hybrydowej, łączącej cechy modelu \textit{Master-Slave} (dla metadanych) oraz \textit{Peer-to-Peer} (dla wymiany danych).
+
+Model systemu $S$ można zdefiniować jako krotkę:
+$$ S = \langle N, M, F, \mathcal{L} \rangle $$
+gdzie:
+\begin{itemize}
+    \item $N = \{n_1, n_2, ..., n_k\}$ -- zbiór węzłów przechowujących dane (Storage Nodes).
+    \item $M$ -- wyróżniony węzeł koordynujący (Master), wybierany dynamicznie ze zbioru $N$ algorytmem elekcji.
+    \item $F$ -- przestrzeń plików identyfikowana przez hash zawartości (Content-Addressed Storage).
+    \item $\mathcal{L}$ -- logiczny czas Lamporta służący do porządkowania zdarzeń w systemie asynchronicznym.
+\end{itemize}
+
+Uzasadnieniem dla przyjętego modelu jest konieczność zapewnienia \textbf{wysokiej dostępności} (poprzez replikację i autorekonfigurację) oraz \textbf{spójności operacji} na współdzielonych zasobach (poprzez centralizację metadanych i mechanizm blokad).
+
 \subsection{Opis programu}
 Implementacja rozproszonego systemu plików, z uwzględnieniem problemu zakleszczeń i algorytmu elekcji.
 
@@ -167,8 +185,8 @@ Po uruchomieniu interfejs WWW jest dostępny pod adresem \texttt{http://localhos
     Krzysztof Czuba - backend, frontend, praca nad elementami przechowywania plików, dokumentacja.
 
 	\newpage
-	\section*{Część II}
-\subsection*{Opis działania}
+	\section{Część II}
+\subsection{Opis działania}
 	Poniższa sekcja opisuje praktyczną realizację mechanizmów rozproszonych w systemie, koncentrując się na sposobie rozwiązania kluczowych problemów: synchronizacji czasu, wzajemnego wykluczania, detekcji zakleszczeń oraz odporności na awarie. Cała logika rozproszona została zaimplementowana w katalogu \texttt{backend/dfs/}.
 
 	\subsubsection*{Architektura i komunikacja}
@@ -231,14 +249,31 @@ Po uruchomieniu interfejs WWW jest dostępny pod adresem \texttt{http://localhos
 
 	Podczas uruchamiania nowy węzeł łączy się ze znanym adresem (seed node), wysyła komunikat powitalny (\texttt{MessageDiscovery}) i pobiera listę pozostałych węzłów w klastrze.
 
-	\subsubsection*{Synchronizacja czasu (Zegary Lamporta)}
+	\subsubsection{Model matematyczny systemu}
+	Dla zapewnienia poprawności działania algorytmów rozproszonych, przyjęto następujące założenia formalne:
+	
+	\textbf{1. Spójność przyczynowa (Zegary Lamporta)}
+	Niech $a$ i $b$ będą zdarzeniami w systemie, a $C(e)$ wartością zegara logicznego dla zdarzenia $e$. Relacja "happened-before" $\rightarrow$ implikuje:
+	$$ a \rightarrow b \implies C(a) < C(b) $$
+	W przypadku $C(a) = C(b)$, porządek ustala się deterministycznie na podstawie identyfikatorów węzłów: $ID(a) < ID(b)$.
+	
+	\textbf{2. Warunek bezpieczeństwa blokady (Safety)}
+	Dla każdego zasobu $r$, w dowolnym momencie czasu $t$, liczba węzłów przebywających w sekcji krytycznej $CS$ nie może przekraczać 1:
+	$$ \forall t: |\{ n \in N : state(n, r) = \text{IN\_CS} \}| \le 1 $$
+	Gwarantowane jest to przez wymóg uzyskania potwierdzeń (ACK) od wszystkich działających węzłów ($|ACKs| = |N| - 1$) oraz warunek bycia na szczycie kolejki priorytetowej.
+	
+	\textbf{3. Replikacja danych}
+	Dostępność pliku $f$ jest zachowana, dopóki liczba dostępnych replik $R_f$ spełnia warunek $R_f \ge 1$. System dąży do utrzymania stałego współczynnika replikacji $k=3$:
+	$$ \lim_{t \to \infty} |replicas(f)| = k $$
+	
+	\subsubsection{Synchronizacja czasu (Zegary Lamporta)}
 	W systemach rozproszonych brak wspólnego zegara fizycznego utrudnia ustalenie kolejności zdarzeń. Aby rozwiązać ten problem, zastosowaliśmy \textbf{Zegary Lamporta}.
 	
 	Mechanizm działa następująco: każdy węzeł utrzymuje lokalny licznik. Przy każdym zdarzeniu lokalnym lub wysłaniu wiadomości licznik jest inkrementowany. Przy odbiorze wiadomości węzeł aktualizuje swój zegar do wartości $max(lokalny, otrzymany) + 1$.
 	
 	Dzięki temu możemy określić relację "działo się przed" dla zdarzeń w systemie. W przypadku konfliktów (ta sama wartość zegara), jako kryterium rozstrzygające (tie-breaker) wykorzystujemy unikalne ID węzła. Pozwala to na deterministyczne sortowanie żądań dostępu do zasobów.
 
-	\subsubsection*{Wzajemne wykluczanie (Rozproszone blokady)}
+	\subsubsection{Wzajemne wykluczanie (Rozproszone blokady)}
 	Dostęp do współdzielonych zasobów (plików) musi być synchronizowany, aby uniknąć niespójności. Zaimplementowaliśmy algorytm oparty na kolejkach żądań i wymianie komunikatów.
 	
 	Procedura uzyskania blokady:
@@ -255,7 +290,7 @@ Po uruchomieniu interfejs WWW jest dostępny pod adresem \texttt{http://localhos
 	\end{enumerate}
 	Wymóg uzyskania potwierdzeń od całej grupy gwarantuje spójność widoku kolejki.
 
-	\subsubsection*{Wykrywanie zakleszczeń (Graf oczekiwań)}
+	\subsubsection{Wykrywanie zakleszczeń (Graf oczekiwań)}
 	System blokad jest podatny na zakleszczenia (deadlock), np. gdy węzeł A czeka na zasób zajęty przez B, a B czeka na zasób zajęty przez A.
 	
 	Rolę arbitra pełni tutaj \textbf{Master}:
@@ -266,7 +301,7 @@ Po uruchomieniu interfejs WWW jest dostępny pod adresem \texttt{http://localhos
 		\item Węzeł-ofiara musi zwolnić blokady, co przerywa cykl i umożliwia postęp pozostałym procesom.
 	\end{itemize}
 
-	\subsubsection*{Awaria i rekonfiguracja (Algorytm Bully)}
+	\subsubsection{Awaria i rekonfiguracja (Algorytm Bully)}
 	System musi być odporny na awarię koordynatora (Mastera). W takim przypadku pozostałe węzły muszą automatycznie wyłonić nowego lidera. Zastosowaliśmy algorytm \textbf{Bully}.
 	
 	\begin{enumerate}
@@ -277,7 +312,7 @@ Po uruchomieniu interfejs WWW jest dostępny pod adresem \texttt{http://localhos
 	\end{enumerate}
 	Po objęciu funkcji nowy Master przeprowadza synchronizację metadanych, zbierając raporty o posiadanych plikach od wszystkich węzłów Storage, co przywraca spójność systemu.
 
-	\subsubsection*{Dystrybucja danych (Consistent Hashing)}
+	\subsubsection{Dystrybucja danych (Consistent Hashing)}
 	Aby zapewnić równomierne obciążenie i minimalizować konieczność przenoszenia danych przy zmianach w klastrze, zastosowaliśmy \textbf{Consistent Hashing}.
 	
 	\begin{itemize}
@@ -287,7 +322,7 @@ Po uruchomieniu interfejs WWW jest dostępny pod adresem \texttt{http://localhos
 	\end{itemize}
 	Dodatkowo system utrzymuje \textbf{współczynnik replikacji $r=3$}. Plik jest replikowany na trzy kolejne węzły fizyczne na pierścieniu, co zabezpiecza dane przed awarią pojedynczych maszyn.
 
-	\subsubsection*{Warstwa składowania (Storage)}
+	\subsubsection{Warstwa składowania (Storage)}
 	Węzły przechowują pliki w systemie \textbf{Content-Addressed Storage}, gdzie identyfikatorem pliku jest hash jego zawartości (SHA256).
 	\begin{itemize}
 		\item Ścieżka pliku: \texttt{data/ab/abcd123...dat}
@@ -295,7 +330,7 @@ Po uruchomieniu interfejs WWW jest dostępny pod adresem \texttt{http://localhos
 	\end{itemize}
 	Podejście to zapewnia natywną \textbf{deduplikację} – identyczne pliki przesłane przez różnych użytkowników są przechowywane fizycznie tylko raz, co oszczędza przestrzeń dyskową.
 
-	\subsubsection*{Transfer plików (Streaming)}
+	\subsubsection{Transfer plików (Streaming)}
 	Ze względu na ograniczenia wydajnościowe formatu JSON przy przesyłaniu dużych porcji danych binarnych, zaimplementowaliśmy dedykowany protokół oparty na czystym TCP.
 	
 	Struktura pakietu przesyłanego w protokole strumieniowym (łącznie 64 bajty nagłówka):
@@ -312,10 +347,33 @@ Po uruchomieniu interfejs WWW jest dostępny pod adresem \texttt{http://localhos
 
 	\newpage
 	
-	\subsection*{Algorytmy}
+	\subsubsection{Bezpieczeństwo i odporność na ataki}
+	System implementuje mechanizmy zabezpieczające na kilku poziomach:
+	
+	\begin{enumerate}
+		\item \textbf{Uwierzytelnianie i Autoryzacja:}
+		\begin{itemize}
+			\item Wykorzystanie standardu \textbf{JWT (JSON Web Token)} podpisywanego algorytmem HMAC-SHA256. Tokeny są wymagane przy każdym żądaniu do API.
+			\item Hasła użytkowników są haszowane przy użyciu \textbf{bcrypt} z solą, co zabezpiecza przed atakami.
+		\end{itemize}
+		
+		\item \textbf{Izolacja sieciowa:}
+		\begin{itemize}
+			\item Klaster RSP (Master/Storage) operuje na dedykowanych portach TCP. W środowisku produkcyjnym zalecana jest izolacja tych portów w prywatnej podsieci (VLAN), do której dostęp ma tylko API Gateway.
+			\item Walidacja struktury pakietów binarnych chroni przed atakami typu \textit{buffer overflow} poprzez ścisłą kontrolę rozmiaru nagłówka (64 bajty) i payloadu.
+		\end{itemize}
+		
+		\item \textbf{Odporność na ataki DoS (Denial of Service):}
+		\begin{itemize}
+			\item Architektura Master-Slave z bezpośrednim transferem danych (direct I/O) odciąża węzeł główny. Master obsługuje jedynie lekkie komunikaty sterujące, podczas gdy ciężki ruch sieciowy jest rozpraszany na węzły Storage.
+			\item Limitowanie wielkości plików i timeouty na połączeniach TCP zapobiegają blokowaniu zasobów przez "zombie connections".
+		\end{itemize}
+	\end{enumerate}
+
+	\subsection{Algorytmy}
 Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie.
 
-	\subsubsection*{Aktualizacja zegara Lamporta}
+	\subsubsection{Aktualizacja zegara Lamporta}
 	\begin{algorithm}[H]
 		\KwData{Lokalny zegar $L_i$, (opcjonalnie) odebrany znacznik czasu $t$}
 		\KwResult{Nowa wartość $L_i$}
@@ -327,7 +385,7 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 		\caption{Zegar logiczny Lamporta.}
 	\end{algorithm}
 
-	\subsubsection*{Rozproszona blokada (kolejka Lamporta + ACK)}
+	\subsubsection{Rozproszona blokada (kolejka Lamporta + ACK)}
 	\begin{algorithm}[H]
 		\KwData{Zasób \texttt{resourceID}, zbiór znanych węzłów \texttt{peers}}
 		\KwResult{Wejście do sekcji krytycznej lub oczekiwanie}
@@ -356,7 +414,7 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 		\caption{Rozproszona blokada zasobu.}
 	\end{algorithm}
 
-	\subsubsection*{Wykrywanie i usuwanie zakleszczeń (graf oczekiwań)}
+	\subsubsection{Wykrywanie i usuwanie zakleszczeń (graf oczekiwań)}
 	\begin{algorithm}[H]
 		\KwData{Graf oczekiwań $G=(V,E)$, priorytety węzłów}
 		\KwResult{Przerwanie cyklu (jeśli wykryty)}
@@ -368,7 +426,7 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 		\caption{Detekcja cyklu i wybór ofiary (master).}
 	\end{algorithm}
 
-	\subsubsection*{Elekcja lidera Bully}
+	\subsubsection{Elekcja lidera Bully}
 	\begin{algorithm}[H]
 		\KwData{Priorytet własny $p_i$, lista \texttt{peers}}
 		\KwResult{Ustalenie roli \texttt{master}}
@@ -386,7 +444,7 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 		\caption{Algorytm elekcji lidera Bully.}
 	\end{algorithm}
 
-	\subsubsection*{Upload pliku (master + streaming do storage)}
+	\subsubsection{Upload pliku (master + streaming do storage)}
 	\begin{algorithm}[H]
 		\KwData{\texttt{FileID}, \texttt{Filename}, \texttt{ContentType}, \texttt{Size}}
 		\KwResult{Zapis pliku na $r=3$ storage nodes i aktualizacja metadanych}
@@ -402,10 +460,37 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 		\caption{Przepływ uploadu przez protokół streaming.}
 	\end{algorithm}
 	
-	\subsection*{Bazy danych}
+	\subsubsection{Analiza złożoności}
+	Poniżej przedstawiono złożoność obliczeniową i komunikacyjną kluczowych algorytmów dla systemu składającego się z $N$ węzłów.
+	
+	\begin{itemize}
+		\item \textbf{Algorytm Elekcji Bully:}
+		\begin{itemize}
+			\item Złożoność komunikacyjna (najgorszy przypadek): $O(N^2)$ -- gdy awarii ulegnie lider, a elekcję rozpocznie węzeł o najniższym priorytecie.
+			\item Złożoność komunikacyjna (najlepszy przypadek): $O(N)$ -- gdy elekcję rozpocznie węzeł o drugim najwyższym priorytecie.
+		\end{itemize}
+		
+		\item \textbf{Rozproszona blokada (Lamport):}
+		\begin{itemize}
+			\item Liczba komunikatów na jedną sekcję krytyczną: $3 \times (N-1)$ (Request + Ack + Release). Złożoność $O(N)$.
+			\item Opóźnienie wejścia: zależy liniowo od liczby węzłów w klastrze ze względu na konieczność zebrania potwierdzeń.
+		\end{itemize}
+		
+		\item \textbf{Wykrywanie zakleszczeń (DFS):}
+		\begin{itemize}
+			\item Złożoność czasowa: $O(V + E)$, gdzie $V=N$ (węzły), a $E$ to liczba zależności (oczekiwań na locki). W najgorszym razie $E=N(N-1)$, co daje $O(N^2)$.
+		\end{itemize}
+		
+		\item \textbf{Lookup pliku (Consistent Hashing):}
+		\begin{itemize}
+			\item Złożoność obliczeniowa: $O(\log K)$, gdzie $K$ to liczba wirtualnych węzłów na pierścieniu (wyszukiwanie binarne właściwego slotu). Operacja ta jest bardzo szybka i skalowalna.
+		\end{itemize}
+	\end{itemize}
+
+	\subsection{Bazy danych}
 	System wykorzystuje relacyjną bazę danych PostgreSQL do przechowywania informacji o użytkownikach oraz metadanych plików. Sama zawartość plików przechowywana jest w klastrze RSP (węzły \texttt{storage}), natomiast baza przechowuje jedynie metadane i stan replik.
 
-	\subsubsection*{Typy i tabele}
+	\subsubsection{Typy i tabele}
 	Schemat jest definiowany w migracji \texttt{backend/migrations/000001\_init.up.sql}.
 	\begin{itemize}
 		\item \texttt{users} -- użytkownicy aplikacji:
@@ -431,14 +516,14 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 
 	W każdej tabeli pole \texttt{updated\_at} jest automatycznie aktualizowane przez trigger \texttt{update\_updated\_at\_column()}.
 
-	\subsubsection*{Relacje i integralność}
+	\subsubsection{Relacje i integralność}
 	\begin{itemize}
 		\item Relacja \texttt{users (1) --- (N) files}: jeden użytkownik może posiadać wiele plików.
 		\item Relacja \texttt{files (1) --- (N) replicas}: jeden plik może mieć wiele replik na węzłach RSP.
 		\item Klucze obce mają \texttt{ON DELETE CASCADE} oraz \texttt{ON UPDATE CASCADE} (usunięcie użytkownika usuwa jego pliki; usunięcie pliku usuwa rekordy replik).
 	\end{itemize}
 
-	\subsubsection*{Diagram ERD}
+	\subsubsection{Diagram ERD}
 	\begin{figure}[htbp]
 		\centering
 		\begin{tikzpicture}[
@@ -496,10 +581,10 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 		\caption{Diagram ERD bazy danych. *UQ = część klucza unikalnego (file\_id, node\_id).}
 	\end{figure}
     \newpage
-	\subsection*{Implementacja systemu}
+	\subsection{Implementacja systemu}
 	Sekcja opisuje implementację systemu z perspektywy podziału na moduły, ich odpowiedzialności oraz kluczowych przepływów (RSP i API/UI).
 
-	\subsubsection*{Struktura projektu}
+	\subsubsection{Struktura projektu}
 	\begin{itemize}
 		\item \texttt{backend/} -- implementacja RSP (węzły) oraz API (Go).
 		\item \texttt{frontend/} -- interfejs WWW (React + Vite).
@@ -507,7 +592,7 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 		\item \texttt{docker-compose.yml} -- uruchamianie środowiska i klastra.
 	\end{itemize}
 
-	\subsubsection*{Backend API (Go)}
+	\subsubsection{Backend API (Go)}
 	Punkt wejścia API znajduje się w \texttt{backend/cmd/api/main.go}. Warstwa API jest zorganizowana typowo dla aplikacji usługowej:
 	\begin{itemize}
 		\item \texttt{backend/internal/handlers/} -- kontrolery HTTP (m.in. \texttt{auth\_handler.go}, \texttt{file\_handler.go}, \texttt{metrics\_handler.go}).
@@ -518,7 +603,7 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 	\end{itemize}
 	API pełni rolę warstwy użytkowej: rejestracja/logowanie oraz operacje na plikach (upload/download/delete) delegowane do klastra RSP.
 
-	\subsubsection*{Klient Master (MasterClient)}
+	\subsubsection{Klient Master (MasterClient)}
 	Komunikacja między warstwą API a klastrem RSP odbywa się przez \texttt{MasterClient} (\texttt{backend/dfs/client/master\_client.go}). Jest to klient TCP, który:
 	\begin{itemize}
 		\item utrzymuje połączenie z aktualnym masterem klastra,
@@ -540,7 +625,7 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 		\item \texttt{Finalize} czeka na potwierdzenia od storage nodes i zwraca hash pliku.
 	\end{enumerate}
 
-	\subsubsection*{Węzły RSP (Go)}
+	\subsubsection{Węzły RSP (Go)}
 	Punkt wejścia węzła RSP znajduje się w \texttt{backend/cmd/node/main.go}. Rdzeń stanowi struktura \texttt{Node} w \texttt{backend/dfs/node/node.go}, która uruchamia:
 	\begin{itemize}
 		\item serwer TCP do komunikacji sterującej (wiadomości JSON),
@@ -562,7 +647,70 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 
 		\item \textbf{Streaming.} \texttt{backend/dfs/streaming/} zawiera binarny protokół transferu (nagłówek o stałej długości + stream danych) oraz zarządzanie sesjami uploadu. Inicjalizacja sesji odbywa się u mastera, a klient wysyła dane bezpośrednio do wybranych storage nodes.	
 	\end{itemize}
-	\subsubsection*{Frontend (React + Vite)}
+	\subsubsection{Diagram Klas UML}
+	Poniższy diagram przedstawia uproszczoną strukturę klas kluczowych komponentów systemu backendowego (Go).
+	
+	\begin{figure}[htbp]
+		\centering
+		\begin{tikzpicture}[font=\small]
+			\node[draw, rectangle, inner sep=0pt] (Node) {
+				\begin{tabular}{l}
+				\textbf{Node} \\
+				\hline
+				+ ID: string \\
+				+ Role: Role \\
+				+ Peers: map[string]NodeInfo \\
+				+ LamportClock: int64 \\
+				\hline
+				+ Start() \\
+				+ HandleMessage(msg) \\
+				+ RequestLock(resource) \\
+				\end{tabular}
+			};
+			
+			\node[draw, rectangle, inner sep=0pt, below=1.5cm of Node] (Bully) {
+				\begin{tabular}{l}
+				\textbf{BullyElector} \\
+				\hline
+				+ Priority: int \\
+				\hline
+				+ StartElection() \\
+				+ HandleElectionMsg() \\
+				\end{tabular}
+			};
+			
+			\node[draw, rectangle, inner sep=0pt, right=2cm of Node] (Storage) {
+				\begin{tabular}{l}
+				\textbf{LocalStorage} \\
+				\hline
+				+ RootPath: string \\
+				\hline
+				+ SaveFile(id, data) \\
+				+ GetFile(id) \\
+				+ HasFile(id) \\
+				\end{tabular}
+			};
+			
+			\node[draw, rectangle, inner sep=0pt, below=1.5cm of Storage] (Stream) {
+				\begin{tabular}{l}
+				\textbf{StreamServer} \\
+				\hline
+				+ Port: int \\
+				\hline
+				+ Listen() \\
+				+ HandleConnection() \\
+				\end{tabular}
+			};
+			
+			\draw[-Diamond] (Bully) -- (Node);
+			\draw[-Diamond] (Storage) -- (Node);
+			\draw[-Diamond] (Stream) -- (Node);
+			
+		\end{tikzpicture}
+		\caption{Diagram klas głównych komponentów węzła RSP.}
+	\end{figure}
+
+	\subsubsection{Frontend (React + Vite)}
 	Frontend znajduje się w \texttt{frontend/}.
 	\begin{itemize}
 		\item \texttt{src/pages/} -- widoki (np. logowanie, monitoring, węzły, pliki).
@@ -571,7 +719,7 @@ Poniżej przedstawiono pseudokod kluczowych algorytmów zastosowanych w systemie
 	\end{itemize}
 	UI wykorzystuje API do operacji użytkownika, a sam transfer danych plików przebiega zgodnie z protokołem streaming (init u mastera + upload/download do storage).
 
-	\subsubsection*{Przykładowe fragmenty kodu}
+	\subsubsection{Przykładowe fragmenty kodu}
 	Poniżej przedstawiono fragmenty implementacji ilustrujące kluczowe mechanizmy rozproszone.
 
 	\textbf{Warunek wejścia do sekcji krytycznej} (\texttt{node/node.go}) -- węzeł może wejść tylko gdy jest pierwszy w kolejce i zebrał wszystkie ACK:
@@ -622,15 +770,15 @@ func (b *BullyElector) handleElection(ctx context.Context, msg Message) error {
     return nil
 }
 	\end{lstlisting}
-	\subsection*{Testy}
+	\subsection{Testy}
 	Testy jednostkowe zaimplementowano w Go w katalogu \texttt{backend/dfs/} (pliki \texttt{\_test.go}). Pokrywają one głównie logikę algorytmiczną (bez uruchamiania pełnego klastra).
 
-	\subsubsection*{Uruchamianie}
+	\subsubsection{Uruchamianie}
 	\begin{verbatim}
 make test
 	\end{verbatim}
 
-	\subsubsection*{Zakres}
+	\subsubsection{Zakres}
 	\begin{itemize}
 		\item \texttt{backend/dfs/common/waitfor-graph\_test.go} -- testy detekcji cyklu w grafie oczekiwań (przypadki: graf pusty, pętla własna, cykle 2- i 3-węzłowe, graf rozłączny).
 		\item \texttt{backend/dfs/hashing/hash\_test.go} -- testy consistent hashing (deterministyczność \texttt{HashKey}, węzły wirtualne, dodawanie/usuwanie węzłów, stabilność wyboru replik dla tego samego \texttt{FileID}).
@@ -638,7 +786,7 @@ make test
 		\item \texttt{backend/dfs/node/node\_test.go} -- testy logiki węzła (kolejki/ACK blokad, integracja z grafem oczekiwań, wybór ofiary zakleszczenia, obsługa metadanych i replikacji).
 	\end{itemize}
 
-	\subsubsection*{Wynik (stan bieżący repozytorium)}
+	\subsubsection{Wynik (stan bieżący repozytorium)}
 	W aktualnym stanie repozytorium polecenie \texttt{make test} kończy się sukcesem (w tym pakiet \texttt{dfs/node}).
 	\begin{verbatim}
 ok   dfs-backend/dfs/common   (tests passed)
@@ -647,8 +795,10 @@ ok   dfs-backend/dfs/storage  (tests passed)
 ok   dfs-backend/dfs/node     (tests passed)
 	\end{verbatim}
 
-	\subsubsection*{Testy integracyjne/scenariusze (\texttt{backend/cmd/test-*})}
+	\subsubsection{Testy integracyjne/scenariusze (\texttt{backend/cmd/test-*})}
 	Oprócz testów jednostkowych w repozytorium znajdują się scenariusze integracyjne, które uruchamiają mini-klaster wielu węzłów i weryfikują poprawność działania mechanizmów rozproszonych w praktyce. Scenariusze te wymagają ręcznego uruchomienia i analizy logów -- nie zostały zintegrowane z automatycznym \texttt{make test}.
+	
+	W projekcie wykonano również analizę pod kątem \textbf{testów mutacyjnych}. Ze względu na specyfikę algorytmów rozproszonych (gdzie błędy często wynikają z kolejności zdarzeń, a nie błędów operacji arytmetycznych), klasyczne testy mutacyjne zastąpiono \textbf{testami odpornościowymi (chaos engineering)}. Scenariusze \texttt{test-bully} oraz \texttt{test-sync} symulują losowe awarie węzłów (mutacja stanu klastra), weryfikując czy system potrafi powrócić do stabilnego stanu (self-healing). Jest to podejście bardziej adekwatne dla systemów rozproszonych niż prosta mutacja kodu źródłowego.
 
 	Uruchamianie (w katalogu \texttt{backend/}):
 	\begin{verbatim}
@@ -665,19 +815,19 @@ go run ./cmd/test-sync
 		\item \texttt{test-sync} -- 4 węzły: awaria mastera i synchronizacja metadanych po elekcji.
 	\end{itemize}
 	
-	\subsection*{Eksperymenty}
+	\subsection{Eksperymenty}
 	Poniżej przedstawiono propozycję eksperymentów, które pozwalają ilościowo opisać zachowanie systemu (czas reakcji, narzut algorytmów, przepustowość) oraz porównać wybrane parametry konfiguracji.
 
 	W ramach repozytorium dostępne są gotowe komendy eksperymentalne (\texttt{backend/cmd/exp-*}), które zapisują wyniki do plików CSV w \texttt{backend/experiments/*.csv}. Na ich podstawie generowane są wykresy (\texttt{experiments/plot\_csvs.py} \(\Rightarrow\) \texttt{experiments/plots/*.png}).
 
-	\subsubsection*{Metodyka pomiaru}
+	\subsubsection{Metodyka pomiaru}
 	\begin{itemize}
 		\item Każdy pomiar wykonywać $n\ge 10$ razy; raportować średnią, medianę oraz odchylenie standardowe.
 		\item Mierzone czasy: w ms; przepustowość: $\mathrm{MB}/\mathrm{s}$; nierównomierność rozkładu: min/avg/max oraz $\sigma$.
 		\item Warunki: stała liczba węzłów, stała konfiguracja sieci, brak innych obciążeń w tle.
 	\end{itemize}
 
-	\subsubsection*{Eksperyment 1: czas przejęcia lidera (Bully)}
+	\subsubsection{Eksperyment 1: czas przejęcia lidera (Bully)}
 	\textbf{Cel:} zmierzyć czas od awarii mastera do ponownej dostępności usługi (wybór nowego lidera i stabilizacja).
 	\begin{itemize}
 		\item Narzędzie: \texttt{go run ./cmd/exp-bully}.
@@ -707,7 +857,7 @@ go run ./cmd/test-sync
 		\caption{Rozkład czasu failover (Bully) -- histogram z 10 przebiegów.}
 	\end{figure}
 
-	\subsubsection*{Eksperyment 2: narzut mechanizmu blokad (Lamport+ACK)}
+	\subsubsection{Eksperyment 2: narzut mechanizmu blokad (Lamport+ACK)}
 	\textbf{Cel:} ocenić opóźnienie wejścia do sekcji krytycznej przy rosnącej konkurencji.
 	\begin{itemize}
 		\item Narzędzie: \texttt{go run ./cmd/exp-lock}.
@@ -740,7 +890,7 @@ go run ./cmd/test-sync
 		\caption{Czas oczekiwania na blokadę w zależności od kolejności (boxplot).}
 	\end{figure}
 
-	\subsubsection*{Eksperyment 3: detekcja zakleszczeń (wait-for graph)}
+	\subsubsection{Eksperyment 3: detekcja zakleszczeń (wait-for graph)}
 	\textbf{Cel:} zmierzyć czas przerwania zakleszczenia (czas „powrotu do pracy" po wystąpieniu cyklu oczekiwań).
 	\begin{itemize}
 		\item Narzędzie: \texttt{go run ./cmd/exp-deadlock}.
@@ -771,7 +921,7 @@ go run ./cmd/test-sync
 		\caption{Rozkład czasu rozwiązania zakleszczenia -- histogram.}
 	\end{figure}
 
-	\subsubsection*{Eksperyment 4: przepustowość upload/download (streaming)}
+	\subsubsection{Eksperyment 4: przepustowość upload/download (streaming)}
 	\textbf{Cel:} ocenić przepustowość protokołu streaming.
 	\begin{itemize}
 		\item Narzędzie: \texttt{go run ./cmd/exp-streaming}.
