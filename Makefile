@@ -1,16 +1,22 @@
 test:
 	cd backend && go test -count=1 ./...
 
+ARCHIVE_NAME = Skowronski-Czuba-rozproszony-system-plikow-projekt
 zip:
-	zip -9 -r Skowronski-Czuba-rozproszony-system-plikow-projekt.zip . \
-		-x "node_modules/*" \
-		-x ".git/*" \
-		-x "frontend/node_modules/*" \
-		-x "frontend/dist/*" \
-		-x "backend/bin/*" \
-		-x "backend/data/*" \
-		-x "*.log" \
-		-x ".DS_Store"
+	rm -rf $(ARCHIVE_NAME) $(ARCHIVE_NAME).zip
+	mkdir -p $(ARCHIVE_NAME)
+	rsync -a \
+		--exclude='node_modules' \
+		--exclude='.git' \
+		--exclude='frontend/dist' \
+		--exclude='backend/bin' \
+		--exclude='backend/data' \
+		--exclude='*.log' \
+		--exclude='.DS_Store' \
+		--exclude='$(ARCHIVE_NAME)' \
+		. $(ARCHIVE_NAME)/
+	zip -9 -r $(ARCHIVE_NAME).zip $(ARCHIVE_NAME)
+	rm -rf $(ARCHIVE_NAME)
 
 DB_URL=postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
 
