@@ -1,6 +1,17 @@
 test:
 	cd backend && go test -count=1 ./...
 
+zip:
+	zip -9 -r Skowronski-Czuba-rozproszony-system-plikow-projekt.zip . \
+		-x "node_modules/*" \
+		-x ".git/*" \
+		-x "frontend/node_modules/*" \
+		-x "frontend/dist/*" \
+		-x "backend/bin/*" \
+		-x "backend/data/*" \
+		-x "*.log" \
+		-x ".DS_Store"
+
 DB_URL=postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
 
 migrate-up:

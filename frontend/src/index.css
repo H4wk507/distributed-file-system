@@ -1,7 +1,6 @@
 @import "tailwindcss";
 
 @theme {
-  /* GRUVBOX DARK PALETTE */
   --color-background: #282828;
   --color-foreground: #ebdbb2;
   --color-card: #3c3836;
@@ -21,14 +20,12 @@
   --color-input: #504945;
   --color-ring: #fabd2f;
 
-  /* MONOSPACE - narzędziowy, techniczny */
   --font-family-sans:
     "IBM Plex Mono", "JetBrains Mono", "Fira Code", ui-monospace,
     "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
   --font-family-mono:
     "IBM Plex Mono", "JetBrains Mono", "Fira Code", ui-monospace, monospace;
 
-  /* ZERO rounded corners */
   --radius: 0;
 }
 
@@ -51,7 +48,6 @@ body {
   min-height: 100vh;
 }
 
-/* Usuń wszystkie cienie i zaokrąglenia */
 *,
 *::before,
 *::after {
@@ -59,7 +55,6 @@ body {
   box-shadow: none !important;
 }
 
-/* Scrollbar w stylu terminala */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -78,13 +73,11 @@ body {
   background: #665c54;
 }
 
-/* Selekcja tekstu */
 ::selection {
   background: #fabd2f;
   color: #282828;
 }
 
-/* Link w stylu terminala */
 a {
   color: #83a598;
   text-decoration: none;
@@ -94,13 +87,11 @@ a:hover {
   text-decoration: underline;
 }
 
-/* Focus - prostokątny, wyraźny */
 :focus-visible {
   outline: 2px solid #fabd2f !important;
   outline-offset: 1px !important;
 }
 
-/* Sonner toasts - gruvbox */
 [data-sonner-toaster] {
   --normal-bg: #3c3836 !important;
   --normal-border: #504945 !important;

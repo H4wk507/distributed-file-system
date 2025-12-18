@@ -33,3 +33,4 @@ go.work
 *.toc
 *.log
 *.out
+*.zip
