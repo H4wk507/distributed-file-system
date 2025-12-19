@@ -5,6 +5,8 @@ x-storage-common: &storage-common
   restart: unless-stopped
   networks:
     - dfs-network
+  security_opt:
+    - no-new-privileges:true
   depends_on:
     master:
       condition: service_healthy
@@ -24,6 +26,8 @@ services:
       - postgres_data:/var/lib/postgresql
     networks:
       - dfs-network
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -47,8 +51,11 @@ services:
         condition: service_healthy
     networks:
       - dfs-network
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
     volumes:
-      - ./backend/migrations:/migrations
+      - ./backend/migrations:/migrations:ro
 
   master:
     build:
@@ -75,6 +82,8 @@ services:
       - master_data:/app/data
     networks:
       - dfs-network
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "9000"]
       interval: 10s
@@ -176,6 +185,9 @@ services:
       - "8080:8080"
     networks:
       - dfs-network
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
     depends_on:
       postgres:
         condition: service_healthy

@@ -41,7 +41,7 @@ migrate-force:
 	migrate -path backend/migrations -database "$(DB_URL)" force $(version)
 
 clean-data:
-	docker-compose down
+	docker compose down
 	docker volume rm distributed-file-system_master_data || true
 	docker volume rm distributed-file-system_storage1_data || true
 	docker volume rm distributed-file-system_storage2_data || true

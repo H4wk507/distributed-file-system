@@ -41,6 +41,7 @@ Dedykowany binarny protokół TCP do wydajnego przesyłania plików z chunked up
 - Docker (preferowana wersja 23+ dla wsparcia BuildKit) & Docker Compose
 - Node.js 22.x + pnpm 10.x
 - Go 1.21+ (opcjonalnie, do eksperymentów)
+- Go migrate - do migracji bazy danych
 
 ### 1. Backend (Docker Compose)
 
