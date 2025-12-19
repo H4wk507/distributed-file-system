@@ -10,6 +10,7 @@ Rozproszony system plików z architekturą master-storage, zaimplementowany w Go
 - **Frontend** – React + Vite + TailwindCSS
 
 Kluczowe mechanizmy:
+
 - **Bully Election** – automatyczny wybór lidera przy awarii mastera
 - **Lamport Timestamps** – synchronizacja zdarzeń w klastrze
 - **Wait-for Graph** – detekcja i rozwiązywanie deadlocków
@@ -37,8 +38,8 @@ Dedykowany binarny protokół TCP do wydajnego przesyłania plików z chunked up
 
 ### Wymagania
 
-- Docker & Docker Compose
-- Node.js + pnpm
+- Docker (preferowana wersja 23+ dla wsparcia BuildKit) & Docker Compose
+- Node.js 22.x + pnpm 10.x
 - Go 1.21+ (opcjonalnie, do eksperymentów)
 
 ### 1. Backend (Docker Compose)
@@ -48,6 +49,7 @@ docker compose up -d --build
 ```
 
 Serwisy:
+
 - API: http://localhost:8080
 - Master: localhost:9000
 - Storage nodes: localhost:9001-9003

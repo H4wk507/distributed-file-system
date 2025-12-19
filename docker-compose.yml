@@ -1,4 +1,13 @@
-version: "3.8"
+x-storage-common: &storage-common
+  build:
+    context: ./backend
+    target: node
+  restart: unless-stopped
+  networks:
+    - dfs-network
+  depends_on:
+    master:
+      condition: service_healthy
 
 services:
   postgres:
@@ -8,7 +17,7 @@ services:
     env_file:
       - .env
     environment:
-      - POSTGRES_HOST_AUTH_METHOD=trust
+      - POSTGRES_HOST_AUTH_METHOD=trust # TODO: dev only
     ports:
       - "5432:5432"
     volumes:
@@ -22,7 +31,7 @@ services:
       retries: 5
 
   migrate:
-    image: migrate/migrate
+    image: migrate/migrate:v4.19.1
     env_file:
       - .env
     command:
@@ -45,8 +54,21 @@ services:
     build:
       context: ./backend
       target: node
+    restart: unless-stopped
     container_name: master
-    command: ["-ip", "0.0.0.0", "-advertise-ip", "master", "-port", "9000", "-role", "master", "-priority", "100"]
+    command:
+      [
+        "-ip",
+        "0.0.0.0",
+        "-advertise-ip",
+        "master",
+        "-port",
+        "9000",
+        "-role",
+        "master",
+        "-priority",
+        "100",
+      ]
     ports:
       - "9000:9000"
     volumes:
@@ -61,60 +83,88 @@ services:
       start_period: 5s
 
   storage1:
-    build:
-      context: ./backend
-      target: node
+    <<: *storage-common
     container_name: storage1
-    command: ["-ip", "0.0.0.0", "-advertise-ip", "storage1", "-port", "9001", "-role", "storage", "-priority", "1", "-seed-ip", "master", "-seed-port", "9000"]
+    command:
+      [
+        "-ip",
+        "0.0.0.0",
+        "-advertise-ip",
+        "storage1",
+        "-port",
+        "9001",
+        "-role",
+        "storage",
+        "-priority",
+        "1",
+        "-seed-ip",
+        "master",
+        "-seed-port",
+        "9000",
+      ]
     ports:
       - "9001:9001"
       - "9101:9101"
     volumes:
       - storage1_data:/app/data
-    networks:
-      - dfs-network
-    depends_on:
-      master:
-        condition: service_healthy
 
   storage2:
-    build:
-      context: ./backend
-      target: node
+    <<: *storage-common
     container_name: storage2
-    command: ["-ip", "0.0.0.0", "-advertise-ip", "storage2", "-port", "9002", "-role", "storage", "-priority", "2", "-seed-ip", "master", "-seed-port", "9000"]
+    command:
+      [
+        "-ip",
+        "0.0.0.0",
+        "-advertise-ip",
+        "storage2",
+        "-port",
+        "9002",
+        "-role",
+        "storage",
+        "-priority",
+        "2",
+        "-seed-ip",
+        "master",
+        "-seed-port",
+        "9000",
+      ]
     ports:
       - "9002:9002"
       - "9102:9102"
     volumes:
       - storage2_data:/app/data
-    networks:
-      - dfs-network
-    depends_on:
-      master:
-        condition: service_healthy
 
   storage3:
-    build:
-      context: ./backend
-      target: node
+    <<: *storage-common
     container_name: storage3
-    command: ["-ip", "0.0.0.0", "-advertise-ip", "storage3", "-port", "9003", "-role", "storage", "-priority", "3", "-seed-ip", "master", "-seed-port", "9000"]
+    command:
+      [
+        "-ip",
+        "0.0.0.0",
+        "-advertise-ip",
+        "storage3",
+        "-port",
+        "9003",
+        "-role",
+        "storage",
+        "-priority",
+        "3",
+        "-seed-ip",
+        "master",
+        "-seed-port",
+        "9000",
+      ]
     ports:
       - "9003:9003"
       - "9103:9103"
     volumes:
       - storage3_data:/app/data
-    networks:
-      - dfs-network
-    depends_on:
-      master:
-        condition: service_healthy
 
   api:
     build:
       context: ./backend
       target: api
+    restart: unless-stopped
     container_name: api
     env_file:
       - .env
