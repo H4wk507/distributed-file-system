@@ -97,7 +97,7 @@ func main() {
 	for _, tf := range testFiles {
 		fileID := uuid.New()
 		data := bytes.NewReader([]byte(tf.content))
-		_, err := tf.storage.GetStorage().SaveFile(fileID, tf.name, "text/plain", data)
+		_, err := tf.storage.GetStorageRaw().SaveFile(fileID, tf.name, "text/plain", data)
 		if err != nil {
 			log.Printf("  Warning: Failed to save %s: %v", tf.name, err)
 		} else {
@@ -113,7 +113,7 @@ func main() {
 	log.Println("Step 7: Storing file directly on storage1 (simulate pre-existing data)...")
 	directFileID := uuid.New()
 	directData := bytes.NewReader([]byte("Direct content on storage1"))
-	_, err := storage1.GetStorage().SaveFile(directFileID, "direct-file.txt", "text/plain", directData)
+	_, err := storage1.GetStorageRaw().SaveFile(directFileID, "direct-file.txt", "text/plain", directData)
 	if err != nil {
 		log.Printf("  Warning: Failed to save direct file: %v", err)
 	} else {
@@ -123,9 +123,9 @@ func main() {
 	// Print storage status
 	log.Println()
 	log.Println("Storage node file counts:")
-	log.Printf("  Storage1: %d files", len(storage1.GetStorage().GetAllMetadata()))
-	log.Printf("  Storage2: %d files", len(storage2.GetStorage().GetAllMetadata()))
-	log.Printf("  Storage3: %d files", len(storage3.GetStorage().GetAllMetadata()))
+	log.Printf("  Storage1: %d files", len(storage1.GetStorageRaw().GetAllMetadata()))
+	log.Printf("  Storage2: %d files", len(storage2.GetStorageRaw().GetAllMetadata()))
+	log.Printf("  Storage3: %d files", len(storage3.GetStorageRaw().GetAllMetadata()))
 	log.Println()
 
 	// Kill the master

@@ -1,0 +1,330 @@
+syntax = "proto3";
+
+package dfs;
+
+option go_package = "dfs-backend/proto";
+
+import "google/protobuf/timestamp.proto";
+
+// Empty response for RPCs that don't return data
+message Empty {}
+
+// ============================================================================
+// Core Types
+// ============================================================================
+
+enum NodeRole {
+  NODE_ROLE_UNSPECIFIED = 0;
+  NODE_ROLE_MASTER = 1;
+  NODE_ROLE_STORAGE = 2;
+}
+
+enum NodeStatus {
+  NODE_STATUS_UNSPECIFIED = 0;
+  NODE_STATUS_ONLINE = 1;
+  NODE_STATUS_OFFLINE = 2;
+  NODE_STATUS_STARTING = 3;
+  NODE_STATUS_STOPPING = 4;
+}
+
+enum LockStatus {
+  LOCK_STATUS_UNSPECIFIED = 0;
+  LOCK_STATUS_PENDING = 1;
+  LOCK_STATUS_GRANTED = 2;
+  LOCK_STATUS_RELEASED = 3;
+}
+
+message NodeInfo {
+  string id = 1;           // UUID as string
+  string ip = 2;
+  int32 port = 3;
+  NodeRole role = 4;
+  NodeStatus status = 5;
+  int32 priority = 6;
+  google.protobuf.Timestamp last_heartbeat = 7;
+}
+
+// ============================================================================
+// Heartbeat
+// ============================================================================
+
+message HeartbeatRequest {
+  NodeInfo node_info = 1;
+  int32 logical_time = 2;
+}
+
+// ============================================================================
+// Election (Bully Algorithm)
+// ============================================================================
+
+message ElectionRequest {
+  string from_id = 1;      // UUID of sender
+  NodeInfo node_info = 2;
+  int32 logical_time = 3;
+}
+
+message ElectionResponse {
+  // OK message - acknowledges election from lower priority node
+  string from_id = 1;
+  int32 logical_time = 2;
+}
+
+message CoordinatorRequest {
+  string from_id = 1;      // UUID of new coordinator
+  int32 logical_time = 2;
+}
+
+// ============================================================================
+// Discovery
+// ============================================================================
+
+message DiscoveryRequest {
+  string from_id = 1;
+  int32 logical_time = 2;
+}
+
+message DiscoveryResponse {
+  repeated NodeInfo peers = 1;
+  int32 logical_time = 2;
+}
+
+// ============================================================================
+// Node Join/Leave
+// ============================================================================
+
+message NodeJoinedRequest {
+  NodeInfo node_info = 1;
+  int32 logical_time = 2;
+}
+
+message NodeLeftRequest {
+  string node_id = 1;
+  int32 logical_time = 2;
+}
+
+// ============================================================================
+// Distributed Locking (Lamport/Ricart-Agrawala style)
+// ============================================================================
+
+message LockRequestMsg {
+  string resource_id = 1;
+  string node_id = 2;      // UUID of requesting node
+  int32 logical_time = 3;
+  LockStatus status = 4;
+  google.protobuf.Timestamp requested_at = 5;
+}
+
+message LockAck {
+  string resource_id = 1;
+  string from_id = 2;
+  int32 logical_time = 3;
+}
+
+message LockAcquiredMsg {
+  string resource_id = 1;
+  string from_id = 2;
+  int32 logical_time = 3;
+}
+
+message LockReleaseMsg {
+  string resource_id = 1;
+  string from_id = 2;
+  int32 logical_time = 3;
+}
+
+message LockAbortMsg {
+  string from_id = 1;
+  int32 logical_time = 2;
+}
+
+// ============================================================================
+// File Operations
+// ============================================================================
+
+message FileDeleteRequest {
+  string hash = 1;
+  string from_id = 2;
+  int32 logical_time = 3;
+}
+
+message FileStoreRequest {
+  string file_id = 1;
+  string filename = 2;
+  string content_type = 3;
+  int64 size = 4;
+  bytes data = 5;
+  int32 logical_time = 6;
+}
+
+message FileStoreResponse {
+  string hash = 1;
+  string file_id = 2;
+}
+
+// ============================================================================
+// Metadata Sync
+// ============================================================================
+
+message MetadataReq {
+  string request_id = 1;
+  string from_id = 2;
+  int32 logical_time = 3;
+}
+
+message NodeFileMetadata {
+  string file_id = 1;
+  string filename = 2;
+  string hash = 3;
+  int64 size = 4;
+  string content_type = 5;
+}
+
+message MetadataResp {
+  string request_id = 1;
+  string node_id = 2;
+  repeated NodeFileMetadata files = 3;
+  int32 logical_time = 4;
+}
+
+// ============================================================================
+// File Replication
+// ============================================================================
+
+message ReplicateFileReq {
+  string file_id = 1;
+  string filename = 2;
+  string hash = 3;
+  string source_node = 4;
+  repeated string target_nodes = 5;
+  int32 logical_time = 6;
+}
+
+// ============================================================================
+// API File Delete (from API server to master)
+// ============================================================================
+
+message APIFileDeleteReq {
+  string request_id = 1;
+  string file_id = 2;
+  string hash = 3;
+  int32 logical_time = 4;
+}
+
+message APIFileDeleteResp {
+  string request_id = 1;
+  bool success = 2;
+  string error = 3;
+  int32 logical_time = 4;
+}
+
+// ============================================================================
+// Streaming Session Coordination
+// ============================================================================
+
+message StorageNodeAddr {
+  string node_id = 1;
+  string addr = 2;         // ip:port
+}
+
+message StreamUploadInitReq {
+  string request_id = 1;
+  string file_id = 2;
+  string filename = 3;
+  string content_type = 4;
+  int64 size = 5;
+  string from_id = 6;
+  int32 logical_time = 7;
+}
+
+message StreamUploadReadyResp {
+  string request_id = 1;
+  string session_id = 2;
+  repeated StorageNodeAddr storage_nodes = 3;
+  bool success = 4;
+  string error = 5;
+  int32 logical_time = 6;
+}
+
+message StreamDownloadInitReq {
+  string request_id = 1;
+  string file_id = 2;
+  string hash = 3;
+  string from_id = 4;
+  int32 logical_time = 5;
+}
+
+message StreamDownloadReadyResp {
+  string request_id = 1;
+  string storage_addr = 2;
+  string filename = 3;
+  int64 size = 4;
+  string hash = 5;
+  bool success = 6;
+  string error = 7;
+  int32 logical_time = 8;
+}
+
+message StreamStoreAckMsg {
+  string session_id = 1;
+  string file_id = 2;
+  string hash = 3;
+  string node_id = 4;
+  bool success = 5;
+  string error = 6;
+  int32 logical_time = 7;
+}
+
+message StreamUploadReadyMsg {
+  string session_id = 1;
+  string file_id = 2;
+  string filename = 3;
+  string content_type = 4;
+  int64 size = 5;
+  int32 logical_time = 6;
+}
+
+// ============================================================================
+// gRPC Service Definition
+// ============================================================================
+
+service NodeService {
+  // Heartbeat - periodic health check between nodes
+  rpc Heartbeat(HeartbeatRequest) returns (Empty);
+  
+  // Election - Bully algorithm messages
+  rpc Election(ElectionRequest) returns (ElectionResponse);
+  rpc Coordinator(CoordinatorRequest) returns (Empty);
+  
+  // Discovery - peer discovery
+  rpc Discovery(DiscoveryRequest) returns (DiscoveryResponse);
+  
+  // Node membership
+  rpc NodeJoined(NodeJoinedRequest) returns (Empty);
+  rpc NodeLeft(NodeLeftRequest) returns (Empty);
+  
+  // Distributed locking
+  rpc RequestLock(LockRequestMsg) returns (LockAck);
+  rpc AcquireLock(LockAcquiredMsg) returns (Empty);
+  rpc ReleaseLock(LockReleaseMsg) returns (Empty);
+  rpc AbortLock(LockAbortMsg) returns (Empty);
+  
+  // File operations
+  rpc DeleteFile(FileDeleteRequest) returns (Empty);
+  rpc StoreFile(FileStoreRequest) returns (FileStoreResponse);
+  
+  // Metadata sync
+  rpc GetMetadata(MetadataReq) returns (MetadataResp);
+  
+  // File replication
+  rpc ReplicateFile(ReplicateFileReq) returns (Empty);
+  
+  // API file delete (master handles this)
+  rpc APIDeleteFile(APIFileDeleteReq) returns (APIFileDeleteResp);
+  
+  // Streaming session coordination
+  rpc InitStreamUpload(StreamUploadInitReq) returns (StreamUploadReadyResp);
+  rpc InitStreamDownload(StreamDownloadInitReq) returns (StreamDownloadReadyResp);
+  rpc StreamStoreAck(StreamStoreAckMsg) returns (Empty);
+  rpc StreamUploadReady(StreamUploadReadyMsg) returns (Empty);
+}
+
