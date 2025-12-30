@@ -1,10 +1,12 @@
 package node
 
 import (
+	"bytes"
 	"context"
 	"dfs-backend/dfs/common"
 	. "dfs-backend/dfs/common"
 	"dfs-backend/dfs/election"
+	dfsgrpc "dfs-backend/dfs/grpc"
 	"dfs-backend/dfs/hashing"
 	"dfs-backend/dfs/storage"
 	"dfs-backend/dfs/streaming"
@@ -34,7 +36,12 @@ type Node struct {
 	peers     map[uuid.UUID]*NodeInfo
 	peerMutex sync.RWMutex
 
+	// Legacy TCP listener for MasterClient compatibility
 	listener net.Listener
+
+	// gRPC server and client connection manager
+	grpcServer  *dfsgrpc.NodeServer
+	connManager *dfsgrpc.PeerConnectionManager
 
 	messageChan chan common.Message
 	stopChan    chan struct{}
@@ -71,11 +78,18 @@ type Node struct {
 	streamingSessionsMutex sync.RWMutex
 
 	logger *log.Logger
+
+	// Context for managing goroutines
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func CreateNodeWithBully(bindIP, advertiseIP string, port int, role NodeRole, priority int) *Node {
+	nodeID := uuid.New()
+	logger := log.New(log.Writer(), fmt.Sprintf("[Node %s] ", role), log.LstdFlags)
+
 	n := &Node{
-		ID:                uuid.New(),
+		ID:                nodeID,
 		IP:                bindIP,
 		AdvertiseIP:       advertiseIP,
 		Port:              port,
@@ -90,11 +104,17 @@ func CreateNodeWithBully(bindIP, advertiseIP string, port int, role NodeRole, pr
 		lockHolders:       make(map[string]uuid.UUID),
 		waitForGraph:      make(map[uuid.UUID]map[uuid.UUID]bool),
 		streamingSessions: make(map[string]*common.StreamSession),
-		logger:            log.New(log.Writer(), fmt.Sprintf("[Node %s] ", role), log.LstdFlags),
+		logger:            logger,
 	}
 
 	n.storage = storage.NewLocalStorage(fmt.Sprintf("./data/node-%s", n.ID))
 	n.elector = election.NewBullyElector(n)
+
+	// Initialize gRPC connection manager
+	n.connManager = dfsgrpc.NewPeerConnectionManager(nodeID, n.IncrementAndGetLogicalTime, logger)
+
+	// Initialize gRPC server (will be started in Start())
+	n.grpcServer = dfsgrpc.NewNodeServer(port, n, logger)
 
 	streamPort := port + streaming.StreamPortOffset
 	n.streamServer = streaming.NewStreamServer(streamPort, n.storage, n.logger)
@@ -150,28 +170,38 @@ func (n *Node) onStreamUploadComplete(sessionID, fileID, hash string) {
 }
 
 func (n *Node) Start(ctx context.Context) error {
-	addr := fmt.Sprintf("%s:%d", n.IP, n.Port)
+	n.ctx, n.cancel = context.WithCancel(ctx)
+
+	// Start gRPC server for node-to-node communication
+	if err := n.grpcServer.Start(n.ctx); err != nil {
+		return fmt.Errorf("failed to start gRPC server: %w", err)
+	}
+
+	// Start legacy TCP listener for MasterClient compatibility
+	addr := fmt.Sprintf("%s:%d", n.IP, n.Port+1) // Use port+1 for legacy TCP
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("failed to start listener: %w", err)
+		return fmt.Errorf("failed to start legacy listener: %w", err)
 	}
 	n.listener = listener
+	n.logger.Printf("Legacy TCP listener started on %s", addr)
+
 	n.Status = StatusOnline
 	n.SetRole(n.Role)
 	n.storage.LoadIndex()
-	n.logger.Printf("Node started on %s (ID: %s, Priority: %d)", addr, n.ID, n.Priority)
+	n.logger.Printf("Node started on %s:%d (ID: %s, Priority: %d)", n.IP, n.Port, n.ID, n.Priority)
 
-	if err := n.streamServer.Start(ctx); err != nil {
+	if err := n.streamServer.Start(n.ctx); err != nil {
 		return fmt.Errorf("failed to start stream server: %w", err)
 	}
 
-	go n.acceptConnections(ctx)
-	go n.handleMessages(ctx)
-	go n.startHeartbeat(ctx)
-	go n.monitorPeers(ctx)
-	go n.monitorLocks(ctx)
-	go n.monitorDeadlocks(ctx)
-	if err := n.elector.Start(ctx); err != nil {
+	go n.acceptConnections(n.ctx)
+	go n.handleMessages(n.ctx)
+	go n.startHeartbeat(n.ctx)
+	go n.monitorPeers(n.ctx)
+	go n.monitorLocks(n.ctx)
+	go n.monitorDeadlocks(n.ctx)
+	if err := n.elector.Start(n.ctx); err != nil {
 		return fmt.Errorf("failed to start elector: %w", err)
 	}
 
@@ -183,6 +213,18 @@ func (n *Node) Stop() error {
 	n.stopOnce.Do(func() {
 		n.Status = StatusStopping
 		close(n.stopChan)
+
+		if n.cancel != nil {
+			n.cancel()
+		}
+
+		if n.grpcServer != nil {
+			n.grpcServer.Stop()
+		}
+
+		if n.connManager != nil {
+			n.connManager.Close()
+		}
 
 		if n.streamServer != nil {
 			if err := n.streamServer.Stop(); err != nil {
@@ -946,17 +988,6 @@ func (n *Node) startHeartbeat(ctx context.Context) {
 
 func (n *Node) sendHeartbeat() {
 	nodeInfo := n.GetNodeInfo()
-	payload, err := json.Marshal(nodeInfo)
-	if err != nil {
-		n.logger.Printf("Failed to marshal node info: %v", err)
-		return
-	}
-
-	msg := Message{
-		Type:    MessageHeartbeat,
-		From:    n.ID,
-		Payload: payload,
-	}
 
 	n.peerMutex.RLock()
 	peers := make([]*NodeInfo, 0, len(n.peers))
@@ -965,9 +996,15 @@ func (n *Node) sendHeartbeat() {
 	}
 	n.peerMutex.RUnlock()
 
-	for _, peer := range peers {
-		go n.SendMessage(peer.IP, peer.Port, msg)
+	// Use background context if node context is nil (e.g., in tests)
+	baseCtx := n.ctx
+	if baseCtx == nil {
+		baseCtx = context.Background()
 	}
+	// Use gRPC for heartbeats
+	ctx, cancel := context.WithTimeout(baseCtx, 5*time.Second)
+	defer cancel()
+	n.connManager.BroadcastHeartbeat(ctx, peers, nodeInfo)
 }
 
 func (n *Node) monitorPeers(ctx context.Context) {
@@ -1081,7 +1118,130 @@ func (n *Node) checkDeadlocks() {
 	}
 }
 
+// SendMessage sends a message to a peer - routes to gRPC or legacy TCP based on message type
 func (n *Node) SendMessage(ip string, port int, msg common.Message) error {
+	// Find the peer by IP and port
+	n.peerMutex.RLock()
+	var targetPeer *NodeInfo
+	for _, peer := range n.peers {
+		if peer.IP == ip && peer.Port == port {
+			targetPeer = peer
+			break
+		}
+	}
+	n.peerMutex.RUnlock()
+
+	// If peer found, use gRPC
+	if targetPeer != nil {
+		return n.sendMessageGRPC(targetPeer, msg)
+	}
+
+	// Fallback to legacy TCP for unknown peers (e.g., during discovery)
+	return n.SendMessageLegacy(ip, port, msg)
+}
+
+// sendMessageGRPC sends a message using gRPC
+func (n *Node) sendMessageGRPC(peer *NodeInfo, msg common.Message) error {
+	// Use background context if node context is nil (e.g., in tests)
+	baseCtx := n.ctx
+	if baseCtx == nil {
+		baseCtx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(baseCtx, 5*time.Second)
+	defer cancel()
+
+	switch msg.Type {
+	case MessageHeartbeat:
+		var nodeInfo NodeInfo
+		json.Unmarshal(msg.Payload, &nodeInfo)
+		return n.connManager.SendHeartbeat(ctx, peer, &nodeInfo)
+	case MessageElection:
+		// Election sends message and expects OK response via gRPC
+		var nodeInfo NodeInfo
+		json.Unmarshal(msg.Payload, &nodeInfo)
+		resp, err := n.connManager.SendElection(ctx, peer, &nodeInfo)
+		if err != nil {
+			return err
+		}
+		// If we got a response with a FromId, it's an OK message
+		if resp != nil && resp.FromId != "" {
+			// Notify the elector that we received an OK
+			n.elector.HandleMessage(ctx, common.Message{
+				Type: common.MessageOK,
+				From: dfsgrpc.ParseUUID(resp.FromId),
+			})
+		}
+		return nil
+	case common.MessageOK:
+		// OK is sent as part of Election response in gRPC, no separate message needed
+		return nil
+	case MessageLockRequest:
+		var lockReq LockRequest
+		json.Unmarshal(msg.Payload, &lockReq)
+		_, err := n.connManager.SendLockRequest(ctx, peer, &lockReq)
+		return err
+	case common.MessageLockAck:
+		var resourceID string
+		json.Unmarshal(msg.Payload, &resourceID)
+		// Lock ack is handled as part of RequestLock response in gRPC
+		return nil
+	case MessageLockAcquired:
+		var resourceID string
+		json.Unmarshal(msg.Payload, &resourceID)
+		return n.connManager.SendLockAcquired(ctx, peer, resourceID)
+	case common.MessageLockRelease:
+		var resourceID string
+		json.Unmarshal(msg.Payload, &resourceID)
+		return n.connManager.SendLockRelease(ctx, peer, resourceID)
+	case common.MessageLockAbort:
+		return n.connManager.SendLockAbort(ctx, peer)
+	case common.MessageFileDelete:
+		var hash string
+		json.Unmarshal(msg.Payload, &hash)
+		return n.connManager.SendFileDelete(ctx, peer, hash)
+	case common.MessageMetadataRequest:
+		var req common.MetadataRequest
+		json.Unmarshal(msg.Payload, &req)
+		resp, err := n.connManager.SendMetadataRequest(ctx, peer, req.RequestID)
+		if err != nil {
+			return err
+		}
+		// Handle the response
+		n.HandleMetadataResponse(resp)
+		return nil
+	case common.MessageReplicateFile:
+		var req common.ReplicateFileRequest
+		json.Unmarshal(msg.Payload, &req)
+		return n.connManager.SendReplicateFile(ctx, peer, &req)
+	case common.MessageStreamStoreAck:
+		var ack common.StreamStoreAck
+		json.Unmarshal(msg.Payload, &ack)
+		return n.connManager.SendStreamStoreAck(ctx, peer, &ack)
+	case common.MessageStreamUploadReady:
+		var sessionData struct {
+			SessionID   string    `json:"session_id"`
+			FileID      uuid.UUID `json:"file_id"`
+			Filename    string    `json:"filename"`
+			ContentType string    `json:"content_type"`
+			Size        int64     `json:"size"`
+		}
+		json.Unmarshal(msg.Payload, &sessionData)
+		return n.connManager.SendStreamUploadReady(ctx, peer, sessionData.SessionID, sessionData.FileID, sessionData.Filename, sessionData.ContentType, sessionData.Size)
+	case MessageCoordinator:
+		return n.connManager.SendCoordinator(ctx, peer)
+	case MessageNodeJoined:
+		var nodeInfo NodeInfo
+		json.Unmarshal(msg.Payload, &nodeInfo)
+		return n.connManager.SendNodeJoined(ctx, peer, &nodeInfo)
+	default:
+		// Fallback to legacy for unhandled message types
+		return n.SendMessageLegacy(peer.IP, peer.Port, msg)
+	}
+}
+
+// SendMessageLegacy sends a message using legacy TCP/JSON protocol
+// This is kept for backward compatibility with MasterClient
+func (n *Node) SendMessageLegacy(ip string, port int, msg common.Message) error {
 	addr := fmt.Sprintf("%s:%d", ip, port)
 
 	maxRetries := 3
@@ -1119,6 +1279,8 @@ func (n *Node) SendMessage(ip string, port int, msg common.Message) error {
 	return fmt.Errorf("failed to send message to %s after %d retries: %w", addr, maxRetries, lastErr)
 }
 
+// BroadcastMessage sends a message to all peers using gRPC
+// Note: This method is kept for backward compatibility but internally uses gRPC
 func (n *Node) BroadcastMessage(msg common.Message) error {
 	n.peerMutex.RLock()
 	peers := make([]*NodeInfo, 0, len(n.peers))
@@ -1127,13 +1289,39 @@ func (n *Node) BroadcastMessage(msg common.Message) error {
 	}
 	n.peerMutex.RUnlock()
 
-	for _, peer := range peers {
-		go func(p *NodeInfo) {
-			// Każdy odbiorca dostanie inny logical time -- czy to zamierzone?
-			if err := n.SendMessage(p.IP, p.Port, msg); err != nil {
-				n.logger.Printf("Failed to send message to %s: %v", p.ID, err)
-			}
-		}(peer)
+	// Use background context if node context is nil (e.g., in tests)
+	baseCtx := n.ctx
+	if baseCtx == nil {
+		baseCtx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(baseCtx, 5*time.Second)
+	defer cancel()
+
+	// Route based on message type to appropriate gRPC method
+	switch msg.Type {
+	case MessageLockAcquired:
+		var resourceID string
+		json.Unmarshal(msg.Payload, &resourceID)
+		n.connManager.BroadcastLockAcquired(ctx, peers, resourceID)
+	case common.MessageLockRelease:
+		var resourceID string
+		json.Unmarshal(msg.Payload, &resourceID)
+		n.connManager.BroadcastLockRelease(ctx, peers, resourceID)
+	case MessageNodeJoined:
+		var nodeInfo NodeInfo
+		json.Unmarshal(msg.Payload, &nodeInfo)
+		n.connManager.BroadcastNodeJoined(ctx, peers, &nodeInfo)
+	case MessageCoordinator:
+		n.connManager.BroadcastCoordinator(ctx, peers)
+	default:
+		// For other message types, use the legacy TCP method
+		for _, peer := range peers {
+			go func(p *NodeInfo) {
+				if err := n.SendMessageLegacy(p.IP, p.Port, msg); err != nil {
+					n.logger.Printf("Failed to send message to %s: %v", p.ID, err)
+				}
+			}(peer)
+		}
 	}
 	return nil
 }
@@ -1454,7 +1642,7 @@ func (n *Node) GetRole() NodeRole {
 	return n.Role
 }
 
-func (n *Node) GetStorage() *storage.LocalStorage {
+func (n *Node) GetStorageRaw() *storage.LocalStorage {
 	return n.storage
 }
 
@@ -1715,4 +1903,489 @@ func (n *Node) sendAPIResponse(conn net.Conn, to uuid.UUID, msgType common.Messa
 	if err := encoder.Encode(responseMsg); err != nil {
 		n.logger.Printf("Failed to send API response: %v", err)
 	}
+}
+
+// ============================================================================
+// NodeHandler interface implementation for gRPC server
+// ============================================================================
+
+// GetStorage returns the local storage (implements dfsgrpc.StorageInterface)
+func (n *Node) GetStorage() dfsgrpc.StorageInterface {
+	return &storageAdapter{n.storage}
+}
+
+// storageAdapter wraps LocalStorage to implement dfsgrpc.StorageInterface
+type storageAdapter struct {
+	ls *storage.LocalStorage
+}
+
+func (s *storageAdapter) GetAllMetadata() []*common.NodeFileMetadata {
+	metas := s.ls.GetAllMetadata()
+	result := make([]*common.NodeFileMetadata, len(metas))
+	for i, m := range metas {
+		result[i] = &common.NodeFileMetadata{
+			FileID:      m.FileID,
+			Filename:    m.Filename,
+			Hash:        m.Hash,
+			Size:        m.Size,
+			ContentType: m.ContentType,
+		}
+	}
+	return result
+}
+
+func (s *storageAdapter) DeleteFile(hash string) error {
+	return s.ls.DeleteFile(hash)
+}
+
+func (s *storageAdapter) StoreFile(fileID uuid.UUID, filename, contentType string, size int64, data []byte) (string, error) {
+	reader := bytes.NewReader(data)
+	meta, err := s.ls.SaveFile(fileID, filename, contentType, reader)
+	if err != nil {
+		return "", err
+	}
+	return meta.Hash, nil
+}
+
+// GetHashRing returns the hash ring (implements dfsgrpc.HashRingInterface)
+func (n *Node) GetHashRing() dfsgrpc.HashRingInterface {
+	if n.hashRing == nil {
+		return nil
+	}
+	return &hashRingAdapter{n.hashRing}
+}
+
+// hashRingAdapter wraps HashRing to implement dfsgrpc.HashRingInterface
+type hashRingAdapter struct {
+	hr *hashing.HashRing
+}
+
+func (h *hashRingAdapter) FindNodesForFile(fileID uuid.UUID, count int) []common.NodeInfo {
+	return h.hr.FindNodesForFile(fileID, count)
+}
+
+// HandleLockRequest handles an incoming lock request from gRPC
+func (n *Node) HandleLockRequest(req *common.LockRequest, fromID uuid.UUID) {
+	n.lockQueueMutex.Lock()
+	n.lockQueue[req.ResourceID] = append(n.lockQueue[req.ResourceID], req)
+	queue := n.lockQueue[req.ResourceID]
+	sort.SliceStable(queue, func(i, j int) bool {
+		return common.CompareLockRequests(queue[i], queue[j])
+	})
+
+	holder, exists := n.lockHolders[req.ResourceID]
+	if exists && holder != req.NodeID {
+		n.waitForGraphMutex.Lock()
+		if n.waitForGraph[req.NodeID] == nil {
+			n.waitForGraph[req.NodeID] = make(map[uuid.UUID]bool)
+		}
+		n.waitForGraph[req.NodeID][holder] = true
+		n.waitForGraphMutex.Unlock()
+	}
+	n.lockQueueMutex.Unlock()
+}
+
+// HandleLockAck handles an incoming lock acknowledgment from gRPC
+func (n *Node) HandleLockAck(resourceID string, fromID uuid.UUID) {
+	n.lockQueueMutex.Lock()
+	defer n.lockQueueMutex.Unlock()
+	if _, exists := n.pendingAcks[resourceID]; !exists {
+		n.pendingAcks[resourceID] = make(map[uuid.UUID]bool)
+	}
+	n.pendingAcks[resourceID][fromID] = true
+	n.logger.Printf("Received ack for %s from %s (total: %d/%d)", resourceID, fromID, len(n.pendingAcks[resourceID]), len(n.peers))
+}
+
+// HandleLockAcquired handles notification that a peer acquired a lock
+func (n *Node) HandleLockAcquired(resourceID string, fromID uuid.UUID) {
+	n.lockQueueMutex.Lock()
+	n.lockHolders[resourceID] = fromID
+	n.lockQueueMutex.Unlock()
+}
+
+// HandleLockRelease handles notification that a peer released a lock
+func (n *Node) HandleLockRelease(resourceID string, fromID uuid.UUID) {
+	n.lockQueueMutex.Lock()
+	defer n.lockQueueMutex.Unlock()
+
+	n.waitForGraphMutex.Lock()
+	for waiter := range n.waitForGraph {
+		for nodeID := range n.waitForGraph[waiter] {
+			if nodeID == fromID {
+				delete(n.waitForGraph[waiter], nodeID)
+			}
+		}
+	}
+	n.waitForGraphMutex.Unlock()
+
+	delete(n.lockHolders, resourceID)
+
+	for i, req := range n.lockQueue[resourceID] {
+		if req.NodeID == fromID {
+			n.lockQueue[resourceID] = append(n.lockQueue[resourceID][:i], n.lockQueue[resourceID][i+1:]...)
+			n.logger.Printf("Lock on %s released by %s", resourceID, fromID)
+			break
+		}
+	}
+}
+
+// HandleLockAbort handles a request to abort locks
+func (n *Node) HandleLockAbort(fromID uuid.UUID) {
+	n.logger.Printf("Received lock abort from %s", fromID)
+
+	n.lockQueueMutex.Lock()
+	resourcesToRelease := []string{}
+	for resourceID, queue := range n.lockQueue {
+		for _, req := range queue {
+			if req.NodeID == n.ID {
+				resourcesToRelease = append(resourcesToRelease, resourceID)
+				break
+			}
+		}
+	}
+	n.lockQueueMutex.Unlock()
+
+	for _, resourceID := range resourcesToRelease {
+		n.ReleaseLock(resourceID)
+	}
+}
+
+// HandleFileDelete handles a file delete request
+func (n *Node) HandleFileDelete(hash string) {
+	err := n.storage.DeleteFile(hash)
+	if err != nil {
+		n.logger.Printf("Error while deleting file '%s': %v", hash, err)
+	}
+}
+
+// HandleReplicateFile handles a file replication request
+func (n *Node) HandleReplicateFile(req *common.ReplicateFileRequest) {
+	reader, meta, err := n.storage.GetFile(req.Hash)
+	if err != nil {
+		n.logger.Printf("failed to get file %s with hash %s for replication: %v", req.Filename, req.Hash, err)
+		return
+	}
+	defer reader.Close()
+
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		n.logger.Printf("failed to read file %s for replication: %v", req.Hash, err)
+		return
+	}
+
+	storeReq := &common.FileStoreRequest{
+		FileID:      meta.FileID,
+		Filename:    meta.Filename,
+		ContentType: meta.ContentType,
+		Size:        meta.Size,
+		Data:        data,
+	}
+
+	for _, targetID := range req.TargetNodes {
+		peer, exists := n.GetPeer(targetID)
+		if !exists {
+			n.logger.Printf("Target node %s not found for replication", targetID)
+			continue
+		}
+		go func(p *common.NodeInfo) {
+			ctx, cancel := context.WithTimeout(n.ctx, 30*time.Second)
+			defer cancel()
+			if _, err := n.connManager.SendFileStore(ctx, p, storeReq); err != nil {
+				n.logger.Printf("Failed to replicate file to %s: %v", p.ID, err)
+			}
+		}(peer)
+	}
+
+	n.logger.Printf("Initiated replication of file %s to %d nodes", req.Hash, len(req.TargetNodes))
+}
+
+// HandleFileStore handles storing a file (for replication)
+func (n *Node) HandleFileStore(req *common.FileStoreRequest) (string, error) {
+	reader := bytes.NewReader(req.Data)
+	meta, err := n.storage.SaveFile(req.FileID, req.Filename, req.ContentType, reader)
+	if err != nil {
+		return "", err
+	}
+	return meta.Hash, nil
+}
+
+// HandleMetadataRequest handles a metadata request and returns the response
+func (n *Node) HandleMetadataRequest(requestID string, fromID uuid.UUID) *common.MetadataResponse {
+	allMeta := n.storage.GetAllMetadata()
+
+	files := make([]common.NodeFileMetadata, len(allMeta))
+	for i, meta := range allMeta {
+		files[i] = common.NodeFileMetadata{
+			FileID:      meta.FileID,
+			Filename:    meta.Filename,
+			Hash:        meta.Hash,
+			Size:        meta.Size,
+			ContentType: meta.ContentType,
+		}
+	}
+
+	return &common.MetadataResponse{
+		RequestID: requestID,
+		NodeID:    n.ID,
+		Files:     files,
+	}
+}
+
+// HandleMetadataResponse handles metadata response from a storage node
+func (n *Node) HandleMetadataResponse(resp *common.MetadataResponse) {
+	if n.Role != common.RoleMaster {
+		return
+	}
+
+	n.globalFileIndexMutex.Lock()
+	for _, file := range resp.Files {
+		if existing, exists := n.globalFileIndex[file.Hash]; exists {
+			found := false
+			for _, nodeID := range existing.Replicas {
+				if nodeID == resp.NodeID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				existing.Replicas = append(existing.Replicas, resp.NodeID)
+			}
+		} else {
+			n.globalFileIndex[file.Hash] = &GlobalFileInfo{
+				FileID:      file.FileID,
+				Filename:    file.Filename,
+				Hash:        file.Hash,
+				Size:        file.Size,
+				ContentType: file.ContentType,
+				Replicas:    []uuid.UUID{resp.NodeID},
+			}
+		}
+	}
+	n.globalFileIndexMutex.Unlock()
+
+	n.logger.Printf("Received metadata from node %s: %d files", resp.NodeID, len(resp.Files))
+
+	n.pendingMetadataSyncMutex.Lock()
+	if n.pendingMetadataSync != nil && n.pendingMetadataSync.RequestID == resp.RequestID {
+		n.pendingMetadataSync.ReceivedNodes[resp.NodeID] = true
+		if len(n.pendingMetadataSync.ReceivedNodes) >= n.pendingMetadataSync.ExpectedNodes {
+			close(n.pendingMetadataSync.Done)
+		}
+	}
+	n.pendingMetadataSyncMutex.Unlock()
+}
+
+// HandleStreamUploadInit handles stream upload initialization
+func (n *Node) HandleStreamUploadInit(req *common.StreamUploadInitRequest) *common.StreamUploadReadyResponse {
+	n.logger.Printf("Stream upload init: file=%s size=%d", req.Filename, req.Size)
+
+	if n.Role != common.RoleMaster {
+		return &common.StreamUploadReadyResponse{
+			RequestID: req.RequestID,
+			Success:   false,
+			Error:     "node is not master",
+		}
+	}
+
+	if n.hashRing == nil || n.hashRing.GetNodeCount() == 0 {
+		return &common.StreamUploadReadyResponse{
+			RequestID: req.RequestID,
+			Success:   false,
+			Error:     "no storage nodes available",
+		}
+	}
+
+	nodes := n.hashRing.FindNodesForFile(req.FileID, 3)
+	if len(nodes) == 0 {
+		return &common.StreamUploadReadyResponse{
+			RequestID: req.RequestID,
+			Success:   false,
+			Error:     "no storage nodes found",
+		}
+	}
+
+	sessionID := uuid.New().String()
+	session := &common.StreamSession{
+		SessionID:     sessionID,
+		FileID:        req.FileID,
+		Filename:      req.Filename,
+		ContentType:   req.ContentType,
+		Size:          req.Size,
+		ExpectedNodes: make([]uuid.UUID, len(nodes)),
+		ReceivedAcks:  make(map[uuid.UUID]string),
+		CreatedAt:     time.Now(),
+		Done:          make(chan struct{}),
+	}
+
+	storageAddrs := make([]common.StorageNodeAddr, len(nodes))
+	for i, node := range nodes {
+		session.ExpectedNodes[i] = node.ID
+		streamAddr := fmt.Sprintf("%s:%d", node.IP, node.Port+streaming.StreamPortOffset)
+		storageAddrs[i] = common.StorageNodeAddr{
+			NodeID: node.ID,
+			Addr:   streamAddr,
+		}
+
+		peer, exists := n.GetPeer(node.ID)
+		if exists {
+			go func(p *common.NodeInfo) {
+				ctx, cancel := context.WithTimeout(n.ctx, 10*time.Second)
+				defer cancel()
+				if err := n.connManager.SendStreamUploadReady(ctx, p, sessionID, req.FileID, req.Filename, req.ContentType, req.Size); err != nil {
+					n.logger.Printf("Failed to send stream upload ready to %s: %v", p.ID, err)
+				}
+			}(peer)
+		}
+	}
+
+	n.streamingSessionsMutex.Lock()
+	n.streamingSessions[sessionID] = session
+	n.streamingSessionsMutex.Unlock()
+
+	n.logger.Printf("Stream upload session created: %s -> %d nodes", sessionID, len(nodes))
+
+	return &common.StreamUploadReadyResponse{
+		RequestID:    req.RequestID,
+		SessionID:    sessionID,
+		StorageNodes: storageAddrs,
+		Success:      true,
+	}
+}
+
+// HandleStreamDownloadInit handles stream download initialization
+func (n *Node) HandleStreamDownloadInit(req *common.StreamDownloadInitRequest) *common.StreamDownloadReadyResponse {
+	n.logger.Printf("Stream download init: fileID=%s hash=%s", req.FileID, req.Hash)
+
+	if n.Role != common.RoleMaster {
+		return &common.StreamDownloadReadyResponse{
+			RequestID: req.RequestID,
+			Success:   false,
+			Error:     "node is not master",
+		}
+	}
+
+	n.globalFileIndexMutex.RLock()
+	fileInfo, exists := n.globalFileIndex[req.Hash]
+	n.globalFileIndexMutex.RUnlock()
+
+	if !exists {
+		return &common.StreamDownloadReadyResponse{
+			RequestID: req.RequestID,
+			Success:   false,
+			Error:     "file not found",
+		}
+	}
+
+	if len(fileInfo.Replicas) == 0 {
+		return &common.StreamDownloadReadyResponse{
+			RequestID: req.RequestID,
+			Success:   false,
+			Error:     "no replicas available",
+		}
+	}
+
+	var selectedPeer *common.NodeInfo
+	for _, replicaID := range fileInfo.Replicas {
+		peer, exists := n.GetPeer(replicaID)
+		if exists && peer.Status == common.StatusOnline {
+			selectedPeer = peer
+			break
+		}
+	}
+
+	if selectedPeer == nil {
+		return &common.StreamDownloadReadyResponse{
+			RequestID: req.RequestID,
+			Success:   false,
+			Error:     "no online replicas",
+		}
+	}
+
+	streamAddr := fmt.Sprintf("%s:%d", selectedPeer.IP, selectedPeer.Port+streaming.StreamPortOffset)
+	n.logger.Printf("Stream download ready: %s -> %s", req.Hash, streamAddr)
+
+	return &common.StreamDownloadReadyResponse{
+		RequestID:   req.RequestID,
+		StorageAddr: streamAddr,
+		Filename:    fileInfo.Filename,
+		Size:        fileInfo.Size,
+		Hash:        fileInfo.Hash,
+		Success:     true,
+	}
+}
+
+// HandleStreamStoreAck handles stream store acknowledgment
+func (n *Node) HandleStreamStoreAck(ack *common.StreamStoreAck) {
+	n.streamingSessionsMutex.Lock()
+	session, exists := n.streamingSessions[ack.SessionID]
+	if !exists {
+		n.streamingSessionsMutex.Unlock()
+		n.logger.Printf("Unknown session: %s", ack.SessionID)
+		return
+	}
+
+	session.ReceivedAcks[ack.NodeID] = ack.Hash
+
+	if len(session.ReceivedAcks) >= len(session.ExpectedNodes) {
+		n.globalFileIndexMutex.Lock()
+		n.globalFileIndex[ack.Hash] = &common.GlobalFileInfo{
+			FileID:      session.FileID,
+			Filename:    session.Filename,
+			Hash:        ack.Hash,
+			Size:        session.Size,
+			ContentType: session.ContentType,
+			Replicas:    session.ExpectedNodes,
+		}
+		n.globalFileIndexMutex.Unlock()
+
+		close(session.Done)
+		delete(n.streamingSessions, ack.SessionID)
+		n.logger.Printf("File upload complete: %s (%d replicas)", session.Filename, len(session.ExpectedNodes))
+	}
+	n.streamingSessionsMutex.Unlock()
+}
+
+// HandleStreamUploadReady prepares storage node for incoming upload
+func (n *Node) HandleStreamUploadReady(sessionID string, fileID uuid.UUID, filename, contentType string, size int64) {
+	sm := n.streamServer.GetSessionManager()
+	session := &streaming.UploadSession{
+		SessionID:   sessionID,
+		FileID:      fileID,
+		Filename:    filename,
+		ContentType: contentType,
+		Size:        size,
+		CreatedAt:   time.Now(),
+	}
+	sm.AddSession(session)
+	n.logger.Printf("Session prepared on storage node: %s for file %s", sessionID, filename)
+}
+
+// HandleElection handles an election message (delegates to elector)
+func (n *Node) HandleElection(ctx context.Context, fromID uuid.UUID, nodeInfo *common.NodeInfo) (bool, error) {
+	// Return true if we should send OK (we have higher priority)
+	if n.Priority > nodeInfo.Priority {
+		// Start our own election if not already master
+		if n.Role != common.RoleMaster {
+			go n.elector.StartElection(ctx)
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+// HandleCoordinator handles a coordinator announcement
+func (n *Node) HandleCoordinator(fromID uuid.UUID) {
+	// Update the sender as master
+	n.UpdatePeerRole(fromID, common.RoleMaster)
+
+	// If we thought we were master, step down
+	if n.Role == common.RoleMaster && fromID != n.ID {
+		n.logger.Printf("Stepping down as master, new coordinator: %s", fromID)
+		n.SetRole(common.RoleStorage)
+	}
+}
+
+// GetConnManager returns the connection manager for use by election
+func (n *Node) GetConnManager() *dfsgrpc.PeerConnectionManager {
+	return n.connManager
 }
